@@ -105,6 +105,7 @@ export type UpdateRecorderArgs = Pick<
   | "disableProvideCommentsWhenRecording"
   | "saveGiftDanma"
   | "saveSCDanma"
+  | "saveDanmaStats2DB"
   | "segment"
   | "sendToWebhook"
   | "uid"
@@ -132,6 +133,7 @@ export type UpdateRecorderArgs = Pick<
   | "weight"
   | "debugLevel"
   | "api"
+  | "cookieMode"
 >;
 export type UpdateRecorderResp = ClientRecorder;
 

@@ -60,6 +60,7 @@ export const recorderNoGlobalFollowFields: Array<
   "disableProvideCommentsWhenRecording",
   "saveGiftDanma",
   "saveSCDanma",
+  "saveDanmaStats2DB",
   "segment",
   "uid",
   "saveCover",
@@ -74,6 +75,7 @@ export const recorderNoGlobalFollowFields: Array<
   "videoFormat",
   "recorderType",
   "cookie",
+  "cookieMode",
   "proxy",
   "doubleScreen",
   "useServerTimestamp",
@@ -105,6 +107,8 @@ export type CommonRoomConfig = {
   title: string;
   uploadPresetId?: string;
   danmu: boolean;
+  /** 弹幕为空或不存在时仍进行压制 */
+  burnWithoutDanmu?: boolean;
   ffmpegPreset?: string | null;
   danmuPreset?: string | null;
   autoPartMerge: boolean;
@@ -425,6 +429,8 @@ interface DouyinRecorderConfig extends RecorderCheckConfig {
   quality: "origin" | "uhd" | "hd" | "sd" | "ld" | "ao" | "real_origin";
   /** 抖音cookie */
   cookie: string;
+  /** Cookie 使用范围，默认为全部 */
+  cookieMode: "all" | "stream" | "danma";
   /** 流格式 */
   formatName: FormatName;
   /** 是否使用双屏直播流 */
@@ -494,6 +500,8 @@ export interface GlobalRecorder {
   recorderType: "auto" | "ffmpeg" | "mesio" | "bililive";
   /** 保存弹幕测试 */
   saveDanma2DB: boolean;
+  /** 将弹幕统计保存到数据库 */
+  saveDanmaStats2DB: boolean;
   /** B站特有的配置 */
   bilibili: BilibiliRecorderConfig;
   /** 斗鱼特有的配置 */
@@ -557,6 +565,8 @@ export interface Recorder {
   convert2Mp4?: boolean;
   /** 视频格式 */
   videoFormat: GlobalRecorder["videoFormat"];
+  /** 将弹幕统计保存到数据库 */
+  saveDanmaStats2DB?: GlobalRecorder["saveDanmaStats2DB"];
   /** 录制器类型 */
   recorderType: GlobalRecorder["recorderType"];
   qualityRetry: GlobalRecorder["qualityRetry"];
@@ -581,6 +591,8 @@ export interface Recorder {
   weight: number;
   /** 平台 Cookie */
   cookie?: string;
+  /** 抖音 Cookie 使用范围 */
+  cookieMode?: DouyinRecorderConfig["cookieMode"];
   /** 请求和录制使用的代理 */
   proxy?: string;
   /** 是否使用双屏直播流 */
@@ -1099,6 +1111,8 @@ export interface BiliupConfig {
   selectiionReply?: 0 | 1;
   /** 合集id */
   seasonId?: number | null;
+  /** 合集中稿件的标题模板，默认 {{mediaTitle}}（视频标题） */
+  seasonTitleTemplate?: string;
   /** 小节id */
   sectionId?: number;
   /** 创建该预设的uid */
