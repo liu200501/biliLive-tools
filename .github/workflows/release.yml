@@ -79,6 +79,19 @@ jobs:
       - name: Build
         run: pnpm run build:app
 
+      - name: Rename artifacts
+        shell: pwsh
+        run: |
+          $tag = "${{ env.RELEASE_TAG }}"
+          $dist = "packages/app/dist"
+          Get-ChildItem "$dist/*.exe" | ForEach-Object {
+            Rename-Item -Path $_.FullName -NewName "biliLive-tools-$tag-win-x64.exe"
+          }
+          Get-ChildItem "$dist/*.zip" | ForEach-Object {
+            Rename-Item -Path $_.FullName -NewName "biliLive-tools-$tag-win-x64.zip"
+          }
+          Get-ChildItem $dist
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -89,8 +102,8 @@ jobs:
           # 如果已经是打好的 tag，防止覆盖原有的草稿状态
           draft: false
           files: |
-            packages/app/dist/*.exe
-            packages/app/dist/*.zip
+            packages/app/dist/biliLive-tools-${{ env.RELEASE_TAG }}-win-x64.exe
+            packages/app/dist/biliLive-tools-${{ env.RELEASE_TAG }}-win-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
