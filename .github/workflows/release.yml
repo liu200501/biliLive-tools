@@ -1,17 +1,39 @@
-name: Build/release Electron app
+name: Release Build (Windows Electron)
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (例如 v1.2.3)'
+        required: true
+        type: string
+      release_name:
+        description: 'Release 标题（留空则用 tag）'
+        required: false
+        type: string
+      release_body:
+        description: 'Release 描述（支持 Markdown，可多行）'
+        required: false
+        type: string
+      prerelease:
+        description: '是否为预发布？'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   push:
     tags:
       - "*"
-  workflow_dispatch:
 
 jobs:
-  release:
+  build_and_release:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
-      is_tag: ${{ startsWith(github.ref, 'refs/tags/') }}
+      # 如果通过 push tag 触发，使用 ref_name；如果手动触发，使用输入的 tag
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
     strategy:
       matrix:
@@ -54,30 +76,23 @@ jobs:
       - name: Install binary deps
         run: pnpm run install:bin
 
-      - name: build
+      - name: Build
         run: pnpm run build:app
 
-      - name: release
-        if: env.is_tag == 'true'
-        uses: ncipollo/release-action@v1
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          allowUpdates: true
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ inputs.release_name || env.RELEASE_TAG }}
+          body: ${{ inputs.release_body }}
+          prerelease: ${{ inputs.prerelease == 'true' }}
+          # 如果已经是打好的 tag，防止覆盖原有的草稿状态
           draft: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-          artifactErrorsFailBuild: false
-          artifacts: "packages/app/dist/*.exe,packages/app/dist/*.zip"
-          replacesArtifacts: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifact
-        if: env.is_tag == 'false'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.os }}
-          path: |
+          files: |
             packages/app/dist/*.exe
             packages/app/dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 permissions:
   contents: write
