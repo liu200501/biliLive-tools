@@ -38,6 +38,8 @@ export interface RecorderCreateOpts<E extends AnyObject = UnknownObject> {
   saveGiftDanma?: boolean;
   // 保存高能弹幕
   saveSCDanma?: boolean;
+  // 保存 PK 数据
+  savePkDanma?: boolean;
   /** 保存封面 */
   saveCover?: boolean;
   /** 转封装为 mp4 */
@@ -116,6 +118,7 @@ export type SerializedRecorder<E extends AnyObject> = PickRequired<RecorderCreat
     | "extra"
     | "segment"
     | "saveSCDanma"
+    | "savePkDanma"
     | "saveCover"
     | "convert2Mp4"
     | "saveGiftDanma"
@@ -225,6 +228,8 @@ export interface Recorder<E extends AnyObject = UnknownObject>
     avatar: string;
     cover: string;
     liveId?: string;
+    /** 主播数字 uid，用于抖音 PK 等场景区分我方/对方 */
+    ownerId?: string;
     recordStartTime: Date;
     area?: string;
     // 直播类型(各平台可选填，目前仅 B站)：normal/paid/guard/password 等

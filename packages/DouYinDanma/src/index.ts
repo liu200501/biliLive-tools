@@ -4,6 +4,8 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { decompressGzip, getXMsStub, getSignature, getUserUniqueId } from "./utils.js";
 import protobuf from "./proto.js";
 import { getCookie } from "./api.js";
+import { PkMessageHandler, PK_METHODS } from "./pk.js";
+import type { PkEvent } from "./pk.js";
 
 import type {
   ChatMessage,
@@ -36,6 +38,7 @@ interface Events {
   roomRank: (message: RoomRankMessage) => void;
   privilegeScreenChat: (message: PrivilegeScreenChatMessage) => void;
   screenChat: (message: ScreenChatMessage) => void;
+  pk: (event: PkEvent) => void;
   message: (message: Message) => void;
 }
 
@@ -56,6 +59,9 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
   private isTimeoutCheckRunning: boolean = false;
   private isReconnecting: boolean = false;
   private host: string;
+  private pkHandler = new PkMessageHandler();
+  /** 开启后打印未处理的 method 名，用于排查 PK 等消息是否到达 */
+  private debugMethod: boolean;
 
   constructor(
     roomId: string,
@@ -67,6 +73,7 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
       cookie?: string;
       timeoutInterval?: number;
       host?: string;
+      debugMethod?: boolean;
     } = {},
   ) {
     super();
@@ -80,6 +87,7 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
     this.timeoutInterval = options.timeoutInterval ?? 100000; // 默认100秒
     this.lastMessageTime = Date.now();
     this.host = options.host ?? "webcast100-ws-web-hl.douyin.com";
+    this.debugMethod = options.debugMethod ?? false;
 
     if (this.autoStart) {
       this.connect();
@@ -112,6 +120,9 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
 
       this.ws.on("message", (data) => {
         this.lastMessageTime = Date.now();
+        if (this.debugMethod) {
+          console.log("[DouYinDanma][frame] recv", (data as Buffer).length, "bytes");
+        }
         this.decode(data as Buffer);
       });
 
@@ -164,11 +175,24 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
     this.heartbeatTimer = setInterval(() => {
       if (this.ws.readyState === WebSocket.OPEN) {
         this.emit("heartbeat");
-        this.send(":\x02hb");
+        this.sendHeartbeat();
       } else {
         console.log("连接未就绪，当前状态:", this.ws.readyState);
       }
     }, this.heartbeatInterval);
+  }
+
+  /**
+   * 发送抖音 Web 标准心跳。
+   * 旧实现发送字符帧 ":\\x02hb"，服务端只回一个空帧后停止推送，
+   * 必须使用 PushFrame（payloadType="hb"）才会保持消息流。
+   */
+  private sendHeartbeat() {
+    // @ts-ignore
+    const PushFrame = protobuf.douyin.PushFrame;
+    // @ts-ignore
+    const frame = PushFrame.encode(PushFrame.create({ payloadType: "hb" })).finish();
+    this.send(Buffer.from(frame));
   }
 
   private stopHeartbeat() {
@@ -337,11 +361,18 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
 
     // @ts-ignore
     const logId = wssPackage.logId;
+    // @ts-ignore
+    const framePayloadType = wssPackage.payloadType;
+
+    // 服务端的心跳/ack 回应无需处理
+    if (framePayloadType === "hb" || framePayloadType === "ack") {
+      return;
+    }
 
     let decompressed;
     try {
       // @ts-ignore
-      if (wssPackage.payload instanceof Buffer) {
+      if (wssPackage.payload instanceof Buffer && wssPackage.payload.length > 0) {
         // @ts-ignore
         decompressed = await decompressGzip(wssPackage.payload);
       } else {
@@ -354,13 +385,24 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
 
     const payloadPackage = Response.decode(decompressed);
 
+    if (this.debugMethod) {
+      console.log(
+        "[DouYinDanma][frame] decoded messages =",
+        payloadPackage.messagesList?.length ?? 0,
+        "needAck =",
+        Boolean(payloadPackage.needAck),
+      );
+    }
+
     let ack = null;
     // @ts-ignore
     if (payloadPackage.needAck) {
+      // 抖音协议：payloadType 固定为 "ack"，internalExt 作为 payload，logId 原样带回
       const obj = PushFrame.create({
         logId: logId,
+        payloadType: "ack",
         // @ts-ignore
-        payloadType: payloadPackage.internalExt,
+        payload: Buffer.from(String(payloadPackage.internalExt ?? ""), "utf-8"),
       });
       ack = PushFrame.encode(obj).finish();
     }
@@ -400,8 +442,19 @@ class DouYinDanmaClient extends TypedEmitter<Events> {
         } else if (msg.method === "WebcastScreenChatMessage") {
           const message = ScreenChatMessage.decode(msg.payload);
           this.handleScreenChatMessage(message.toJSON() as ScreenChatMessage);
+        } else if (PK_METHODS.has(msg.method)) {
+          // 单条 PK 消息解析失败不应影响后续消息
+          try {
+            const event = this.pkHandler.handle(msg.method, msg.payload, Number(msg.msgId ?? 0));
+            if (event) this.emit("pk", event);
+          } catch (e) {
+            this.emit("error", e as Error);
+          }
         } else {
           // WebcastRanklistHourEntranceMessage,WebcastInRoomBannerMessage,WebcastRoomStreamAdaptationMessage
+          if (this.debugMethod) {
+            console.log("[DouYinDanma][unhandled method]", msg.method);
+          }
         }
       } catch (e) {
         console.error("error:", e, msg);

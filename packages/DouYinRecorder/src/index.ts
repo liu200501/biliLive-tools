@@ -22,6 +22,7 @@ import { singleton } from "./utils.js";
 import { resolveShortURL, parseUser } from "./douyin_api.js";
 
 import DouYinDanmaClient from "douyin-danma-listener";
+import type { DouyinPk } from "@bililive-tools/manager";
 
 import type { APIType } from "./types.js";
 
@@ -185,6 +186,7 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
     this.liveInfo.cover = res.cover;
     this.liveInfo.liveId = res.liveId;
     this.liveInfo.avatar = res.avatar;
+    this.liveInfo.ownerId = res.ownerId;
 
     // 再检查一次，上一个接口可能不存在标题参数
     if (utils.checkTitleKeywordsBeforeRecord(this.liveInfo.title, this, isManualStart)) return null;
@@ -301,6 +303,8 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
   const client = new DouYinDanmaClient(this?.liveInfo?.liveId as string, {
     cookie: this.cookieMode === "stream" ? undefined : this.auth,
+    // 排查 PK 等消息时，设置环境变量 DOUYIN_DEBUG_METHOD=1 可打印未处理的 method
+    debugMethod: process.env.DOUYIN_DEBUG_METHOD === "1",
   });
   console.log("DouYinDanmaClient", this?.liveInfo?.liveId, this.cookieMode, this.auth);
   client.on("chat", (msg) => {
@@ -410,6 +414,85 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
     // 更新缓存
     giftMessageCache.set(groupId, { gift, timer });
+  });
+  // PK 比分高频推送，限制最小写入间隔，避免 XML 膨胀
+  let lastPkScoreWrite = 0;
+  const PK_SCORE_MIN_INTERVAL = 2000;
+  client.on("pk", (event) => {
+    if (this.savePkDanma === false) return;
+    const extraDataController = downloader.getExtraDataController();
+    if (!extraDataController) return;
+
+    const ownerId = this.liveInfo?.ownerId;
+    const matchOwner = (id?: string | null) => !!ownerId && !!id && id === ownerId;
+
+    const pkMessage: DouyinPk = {
+      type: "douyin_pk",
+      timestamp: Date.now(),
+      event: event.type,
+      battleId: event.battle_id,
+      contextBattleId: event.context_battle_id,
+      duration: event.duration,
+    };
+
+    const toUsers = (users: { uid: string | null; nickname: string; score: string }[]) =>
+      users.map((u) => ({ uid: u.uid, nickname: u.nickname, score: u.score }));
+
+    // 比分：区分我方与所有对手（支持多人 PK）
+    const opponents = new Map<string, DouyinPk["opponents"] extends (infer I)[] | undefined ? I : never>();
+    const getOpponent = (anchorId: string | null | undefined) => {
+      const key = anchorId ?? "unknown";
+      let opp = opponents.get(key);
+      if (!opp) {
+        opp = { anchorId };
+        opponents.set(key, opp);
+      }
+      return opp;
+    };
+
+    if ((event.type === "scores" || event.type === "finish") && event.scores?.length) {
+      const mine = event.scores.find((s) => matchOwner(s.anchor_id));
+      if (mine) pkMessage.myScore = mine.score;
+      for (const s of event.scores) {
+        if (matchOwner(s.anchor_id)) continue;
+        const opp = getOpponent(s.anchor_id);
+        opp.score = s.score;
+        opp.rank = s.battle_rank;
+      }
+    }
+
+    // 贡献榜：区分我方与所有对手
+    if ((event.type === "armies" || event.type === "finish") && event.anchors?.length) {
+      const mine = event.anchors.find((a) => matchOwner(a.anchor_id));
+      if (mine) pkMessage.myArmies = toUsers(mine.users);
+      for (const a of event.anchors) {
+        if (matchOwner(a.anchor_id)) continue;
+        const opp = getOpponent(a.anchor_id);
+        opp.armies = toUsers(a.users);
+      }
+    }
+
+    if (opponents.size > 0) {
+      const list = [...opponents.values()].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+      pkMessage.opponents = list;
+      // 兼容字段：取排名最高的对手
+      const first = list[0];
+      if (first) {
+        pkMessage.opponentId = first.anchorId ?? null;
+        pkMessage.opponentScore = first.score;
+        pkMessage.opponentArmies = first.armies;
+      }
+    }
+
+    // scores 事件限流
+    if (event.type === "scores") {
+      const now = Date.now();
+      if (now - lastPkScoreWrite < PK_SCORE_MIN_INTERVAL) return;
+      lastPkScoreWrite = now;
+    }
+
+    this.emit("Message", pkMessage);
+    extraDataController.addMessage(pkMessage);
   });
   client.on("reconnect", (attempts: number) => {
     this.appendTimeline({ text: `弹幕连接断开，正在重试: ${attempts}` });

@@ -10,6 +10,7 @@ import {
 } from "@bililive-tools/manager";
 
 import { getInfo, getStream, getLiveStatus, getStrictStream } from "./stream.js";
+import { getRoomInfo } from "./bilibili_api.js";
 import DanmaClient from "./danma.js";
 
 import type {
@@ -418,6 +419,39 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
     });
   }
 
+  // 轮询 PK 状态，仅在状态变化时写入 XML，避免产生大量冗余记录
+  let lastPkStatus: number | undefined;
+  let pkStatusTimer: ReturnType<typeof setInterval> | undefined;
+  const pollPkStatus = async () => {
+    if (this.disableProvideCommentsWhenRecording) return;
+    if (this.savePkDanma === false) return;
+    try {
+      const info = await getRoomInfo(roomId);
+      const status = info?.pk_status;
+      if (typeof status !== "number") return;
+      if (lastPkStatus === status) return;
+      lastPkStatus = status;
+      const extraDataController = downloader.getExtraDataController();
+      if (!extraDataController) return;
+      extraDataController.addMessage({
+        type: "pk_status",
+        timestamp: Date.now(),
+        status,
+      });
+    } catch (err) {
+      this.emit("DebugLog", {
+        type: "common",
+        text: `获取 PK 状态失败: ${String(err)}`,
+      });
+    }
+  };
+  if (this.savePkDanma !== false) {
+    pkStatusTimer = setInterval(() => {
+      void pollPkStatus();
+    }, 30e3);
+    void pollPkStatus();
+  }
+
   const downloaderArgs = downloader.getArguments();
   downloader.run();
 
@@ -431,6 +465,7 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
     this.emit("stateChange", { state: "stopping-record" });
     intervalId && clearInterval(intervalId);
+    pkStatusTimer && clearInterval(pkStatusTimer);
 
     try {
       danmaClient.stop();

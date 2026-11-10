@@ -26,6 +26,8 @@ export interface RoomInfo {
   living: boolean;
   nickname: string;
   sec_uid: string;
+  /** 主播数字 uid，用于 PK 等场景区分我方/对方 */
+  ownerId?: string;
   avatar: string;
   api: RealAPIType;
   // 是否为直播电台

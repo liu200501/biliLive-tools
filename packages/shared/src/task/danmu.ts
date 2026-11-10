@@ -456,6 +456,7 @@ interface VideoDataItem {
   sc: CommonItem[];
   guard: CommonItem[];
   gift: CommonItem[];
+  pk?: CommonItem[];
 }
 
 /**

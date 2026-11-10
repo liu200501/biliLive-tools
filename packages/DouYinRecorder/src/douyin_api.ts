@@ -316,6 +316,7 @@ async function getRoomInfoByHtml(
       isLiveRadio: isLiveRadio,
       nickname: roomInfo?.anchor?.nickname ?? "",
       sec_uid: roomInfo?.anchor?.sec_uid ?? "",
+      ownerId: roomInfo?.anchor?.id_str ?? undefined,
       avatar: roomInfo?.anchor?.avatar_thumb?.url_list?.[0] ?? "",
       api: "webHTML",
       room: {
@@ -417,6 +418,7 @@ async function getRoomInfoByWeb(
     nickname: data?.user?.nickname ?? "",
     avatar: data?.user?.avatar_thumb?.url_list?.[0] ?? "",
     sec_uid: data?.user?.sec_uid ?? "",
+    ownerId: data?.user?.id_str ?? undefined,
     api: "web",
     room: {
       title: room?.title ?? "",
@@ -466,6 +468,7 @@ async function getRoomInfoByMobile(
     isLiveRadio: room?.live_type_audio ?? false,
     nickname: room?.owner?.nickname,
     sec_uid: room?.owner?.sec_uid,
+    ownerId: room?.owner?.id_str ?? undefined,
     avatar: room?.owner?.avatar_thumb?.url_list?.[0],
     api: "mobile",
     room: {
@@ -498,6 +501,8 @@ export async function getRoomInfo(
   cover: string;
   liveId: string;
   uid: string;
+  /** 主播数字 uid，用于 PK 区分我方/对方 */
+  ownerId?: string;
   api: RealAPIType;
 }> {
   let data: RoomInfo;
@@ -628,6 +633,7 @@ export async function getRoomInfo(
     cover: room.cover,
     liveId: room.id_str,
     uid: data.sec_uid,
+    ownerId: data.ownerId,
     api: data.api,
   };
 }

@@ -22,6 +22,8 @@ export async function getInfo(
   cover: string;
   liveId: string;
   uid: string;
+  /** 主播数字 uid，用于 PK 区分我方/对方 */
+  ownerId?: string;
   api: RealAPIType;
   liveStartTime: Date;
   recordStartTime: Date;
@@ -49,6 +51,7 @@ export async function getInfo(
     cover: info.cover,
     liveId: info.liveId,
     uid: info.uid,
+    ownerId: info.ownerId,
     api: info.api,
     liveStartTime: startTime,
     recordStartTime: startTime,

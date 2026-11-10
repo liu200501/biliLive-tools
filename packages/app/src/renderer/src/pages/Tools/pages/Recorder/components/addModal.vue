@@ -793,6 +793,21 @@
                 >全局</n-checkbox
               >
             </n-form-item>
+            <n-form-item v-if="!config.disableProvideCommentsWhenRecording">
+              <template #label>
+                <Tip
+                  text="保存 PK 数据"
+                  tip="录制 PK 开始/结束状态与比分数据，关闭后不再记录 PK 数据"
+                ></Tip>
+              </template>
+              <n-switch
+                v-model:value="config.savePkDanma"
+                :disabled="globalFieldsObj.savePkDanma"
+              />
+              <n-checkbox v-model:checked="globalFieldsObj.savePkDanma" class="global-checkbox"
+                >全局</n-checkbox
+              >
+            </n-form-item>
             <n-form-item
               v-if="
                 !config.disableProvideCommentsWhenRecording &&
@@ -919,6 +934,7 @@ const globalFieldsObj = ref<Record<NonNullable<Recorder["noGlobalFollowFields"]>
     disableProvideCommentsWhenRecording: true,
     saveGiftDanma: true,
     saveSCDanma: true,
+    savePkDanma: true,
     saveDanmaStats2DB: true,
     segment: true,
     uid: true,
@@ -1049,6 +1065,7 @@ const initGlobalFields = () => {
     ),
     saveGiftDanma: !(config.value?.noGlobalFollowFields ?? []).includes("saveGiftDanma"),
     saveSCDanma: !(config.value?.noGlobalFollowFields ?? []).includes("saveSCDanma"),
+    savePkDanma: !(config.value?.noGlobalFollowFields ?? []).includes("savePkDanma"),
     saveDanmaStats2DB: !(config.value?.noGlobalFollowFields ?? []).includes("saveDanmaStats2DB"),
     segment: !(config.value?.noGlobalFollowFields ?? []).includes("segment"),
     uid: !(config.value?.noGlobalFollowFields ?? []).includes("uid"),
@@ -1127,6 +1144,9 @@ watch(
     }
     if (val.saveSCDanma) {
       config.value.saveSCDanma = appConfig.value.recorder.saveSCDanma;
+    }
+    if (val.savePkDanma) {
+      config.value.savePkDanma = appConfig.value.recorder.savePkDanma;
     }
     if (val.saveDanmaStats2DB) {
       config.value.saveDanmaStats2DB = appConfig.value.recorder.saveDanmaStats2DB;

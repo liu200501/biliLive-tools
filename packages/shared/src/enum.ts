@@ -367,6 +367,7 @@ export const APP_DEFAULT_CONFIG: AppConfig = {
     segment: "90",
     saveGiftDanma: false,
     saveSCDanma: true,
+    savePkDanma: true,
     saveCover: false,
     uid: undefined,
     debugMode: false,

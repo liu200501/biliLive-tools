@@ -9,7 +9,7 @@ import { pick } from "lodash-es";
 import { Message } from "./common.js";
 
 const METADATA_PLACEHOLDER = "<!--METADATA_PLACEHOLDER-->";
-const XML_FILE_HEADER = `<?xml version="1.0" encoding="utf-8"?>\n<?xml-stylesheet type="text/xsl" href="#s"?>\n<i>\n${METADATA_PLACEHOLDER}\n<RecorderXmlStyle><z:stylesheet version="1.0" id="s" xml:id="s" xmlns:z="http://www.w3.org/1999/XSL/Transform"><z:output method="html"/><z:template match="/"><html><meta name="viewport" content="width=device-width"/><title>弹幕文件 <z:value-of select="/i/metadata/user_name/text()"/></title><style>body{margin:0}h1,h2,p,table{margin-left:5px}table{border-spacing:0}td,th{border:1px solid grey;padding:1px 5px}th{position:sticky;top:0;background:#4098de}tr:hover{background:#d9f4ff}div{overflow:auto;max-height:80vh;max-width:100vw;width:fit-content}</style><h1>弹幕XML文件</h1><p>本文件不支持在 IE 浏览器里预览，请使用 Chrome Firefox Edge 等浏览器。</p><p>文件用法参考文档 <a href="https://rec.danmuji.org/user/danmaku/">https://rec.danmuji.org/user/danmaku/</a></p><table><tr><td>房间号</td><td><z:value-of select="/i/metadata/room_id/text()"/></td></tr><tr><td>主播名</td><td><z:value-of select="/i/metadata/user_name/text()"/></td></tr><tr><td><a href="#d">弹幕</a></td><td>共<z:value-of select="count(/i/d)"/>条记录</td></tr><tr><td><a href="#guard">上船</a></td><td>共<z:value-of select="count(/i/guard)"/>条记录</td></tr><tr><td><a href="#sc">SC</a></td><td>共<z:value-of select="count(/i/sc)"/>条记录</td></tr><tr><td><a href="#gift">礼物</a></td><td>共<z:value-of select="count(/i/gift)"/>条记录</td></tr></table><h2 id="d">弹幕</h2><div id="dm"><table><tr><th>用户名</th><th>出现时间</th><th>用户ID</th><th>弹幕</th><th>参数</th></tr><z:for-each select="/i/d"><tr><td><z:value-of select="@user"/></td><td></td><td></td><td><z:value-of select="."/></td><td><z:value-of select="@p"/></td></tr></z:for-each></table></div><script>Array.from(document.querySelectorAll('#dm tr')).slice(1).map(t=>t.querySelectorAll('td')).forEach(t=>{let p=t[4].textContent.split(','),a=p[0];t[1].textContent=\`\u0024{(Math.floor(a/60/60)+'').padStart(2,0)}:\u0024{(Math.floor(a/60%60)+'').padStart(2,0)}:\u0024{(a%60).toFixed(3).padStart(6,0)}\`;t[2].innerHTML=\`&lt;a target=_blank rel="nofollow noreferrer" "&gt;\u0024{p[6]}&lt;/a&gt;\`})</script><h2 id="guard">舰长购买</h2><div><table><tr><th>用户名</th><th>用户ID</th><th>舰长等级</th><th>购买数量</th><th>出现时间</th></tr><z:for-each select="/i/guard"><tr><td><z:value-of select="@user"/></td><td><a rel="nofollow noreferrer"><z:attribute name="href"><z:text></z:text><z:value-of select="@uid" /></z:attribute><z:value-of select="@uid"/></a></td><td><z:value-of select="@level"/></td><td><z:value-of select="@count"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div><h2 id="sc">SuperChat 醒目留言</h2><div><table><tr><th>用户名</th><th>用户ID</th><th>内容</th><th>显示时长</th><th>价格</th><th>出现时间</th></tr><z:for-each select="/i/sc"><tr><td><z:value-of select="@user"/></td><td><a rel="nofollow noreferrer"><z:attribute name="href"><z:text></z:text><z:value-of select="@uid" /></z:attribute><z:value-of select="@uid"/></a></td><td><z:value-of select="."/></td><td><z:value-of select="@time"/></td><td><z:value-of select="@price"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div><h2 id="gift">礼物</h2><div><table><tr><th>用户名</th><th>用户ID</th><th>礼物名</th><th>礼物数量</th><th>出现时间</th></tr><z:for-each select="/i/gift"><tr><td><z:value-of select="@user"/></td><td><span rel="nofollow noreferrer"><z:attribute name="href"></z:attribute><z:value-of select="@uid"/></span></td><td><z:value-of select="@giftname"/></td><td><z:value-of select="@giftcount"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div></html></z:template></z:stylesheet></RecorderXmlStyle>\n`;
+const XML_FILE_HEADER = `<?xml version="1.0" encoding="utf-8"?>\n<?xml-stylesheet type="text/xsl" href="#s"?>\n<i>\n${METADATA_PLACEHOLDER}\n<RecorderXmlStyle><z:stylesheet version="1.0" id="s" xml:id="s" xmlns:z="http://www.w3.org/1999/XSL/Transform"><z:output method="html"/><z:template match="/"><html><meta name="viewport" content="width=device-width"/><title>弹幕文件 <z:value-of select="/i/metadata/user_name/text()"/></title><style>body{margin:0}h1,h2,p,table{margin-left:5px}table{border-spacing:0}td,th{border:1px solid grey;padding:1px 5px}th{position:sticky;top:0;background:#4098de}tr:hover{background:#d9f4ff}div{overflow:auto;max-height:80vh;max-width:100vw;width:fit-content}</style><h1>弹幕XML文件</h1><p>本文件不支持在 IE 浏览器里预览，请使用 Chrome Firefox Edge 等浏览器。</p><p>文件用法参考文档 <a href="https://rec.danmuji.org/user/danmaku/">https://rec.danmuji.org/user/danmaku/</a></p><table><tr><td>房间号</td><td><z:value-of select="/i/metadata/room_id/text()"/></td></tr><tr><td>主播名</td><td><z:value-of select="/i/metadata/user_name/text()"/></td></tr><tr><td><a href="#d">弹幕</a></td><td>共<z:value-of select="count(/i/d)"/>条记录</td></tr><tr><td><a href="#guard">上船</a></td><td>共<z:value-of select="count(/i/guard)"/>条记录</td></tr><tr><td><a href="#sc">SC</a></td><td>共<z:value-of select="count(/i/sc)"/>条记录</td></tr><tr><td><a href="#gift">礼物</a></td><td>共<z:value-of select="count(/i/gift)"/>条记录</td></tr><tr><td><a href="#pk">PK</a></td><td>共<z:value-of select="count(/i/pk)"/>条记录</td></tr><tr><td><a href="#douyin_pk">抖音PK</a></td><td>共<z:value-of select="count(/i/douyin_pk)"/>条记录</td></tr></table><h2 id="d">弹幕</h2><div id="dm"><table><tr><th>用户名</th><th>出现时间</th><th>用户ID</th><th>弹幕</th><th>参数</th></tr><z:for-each select="/i/d"><tr><td><z:value-of select="@user"/></td><td></td><td></td><td><z:value-of select="."/></td><td><z:value-of select="@p"/></td></tr></z:for-each></table></div><script>Array.from(document.querySelectorAll('#dm tr')).slice(1).map(t=>t.querySelectorAll('td')).forEach(t=>{let p=t[4].textContent.split(','),a=p[0];t[1].textContent=\`\u0024{(Math.floor(a/60/60)+'').padStart(2,0)}:\u0024{(Math.floor(a/60%60)+'').padStart(2,0)}:\u0024{(a%60).toFixed(3).padStart(6,0)}\`;t[2].innerHTML=\`&lt;a target=_blank rel="nofollow noreferrer" "&gt;\u0024{p[6]}&lt;/a&gt;\`})</script><h2 id="guard">舰长购买</h2><div><table><tr><th>用户名</th><th>用户ID</th><th>舰长等级</th><th>购买数量</th><th>出现时间</th></tr><z:for-each select="/i/guard"><tr><td><z:value-of select="@user"/></td><td><a rel="nofollow noreferrer"><z:attribute name="href"><z:text></z:text><z:value-of select="@uid" /></z:attribute><z:value-of select="@uid"/></a></td><td><z:value-of select="@level"/></td><td><z:value-of select="@count"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div><h2 id="sc">SuperChat 醒目留言</h2><div><table><tr><th>用户名</th><th>用户ID</th><th>内容</th><th>显示时长</th><th>价格</th><th>出现时间</th></tr><z:for-each select="/i/sc"><tr><td><z:value-of select="@user"/></td><td><a rel="nofollow noreferrer"><z:attribute name="href"><z:text></z:text><z:value-of select="@uid" /></z:attribute><z:value-of select="@uid"/></a></td><td><z:value-of select="."/></td><td><z:value-of select="@time"/></td><td><z:value-of select="@price"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div><h2 id="gift">礼物</h2><div><table><tr><th>用户名</th><th>用户ID</th><th>礼物名</th><th>礼物数量</th><th>出现时间</th></tr><z:for-each select="/i/gift"><tr><td><z:value-of select="@user"/></td><td><span rel="nofollow noreferrer"><z:attribute name="href"></z:attribute><z:value-of select="@uid"/></span></td><td><z:value-of select="@giftname"/></td><td><z:value-of select="@giftcount"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div><h2 id="pk">PK</h2><div><table><tr><th>状态</th><th>对手</th><th>出现时间</th></tr><z:for-each select="/i/pk"><tr><td><z:value-of select="@status"/></td><td><z:value-of select="@opponent"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div><h2 id="douyin_pk">抖音 PK</h2><div><table><tr><th>事件</th><th>对局ID</th><th>时长</th><th>我方PK值</th><th>对方PK值</th><th>对方ID</th><th>全部对手(ID:分值:排名)</th><th>出现时间</th></tr><z:for-each select="/i/douyin_pk"><tr><td><z:value-of select="@event"/></td><td><z:value-of select="@battle_id"/></td><td><z:value-of select="@duration"/></td><td><z:value-of select="@my_score"/></td><td><z:value-of select="@opponent_score"/></td><td><z:value-of select="@opponent_id"/></td><td><z:value-of select="@opponents"/></td><td><z:value-of select="@ts"/></td></tr></z:for-each></table></div></html></z:template></z:stylesheet></RecorderXmlStyle>\n`;
 const DANMA_STATS_INTERVAL = 10;
 
 export interface DanmaStatsPayload {
@@ -24,6 +24,7 @@ export interface XmlStreamStats {
   uniqMember: number;
   scNum: number;
   guardNum: number;
+  pkNum: number;
   danmaStats: DanmaStatsPayload;
 }
 
@@ -65,6 +66,7 @@ export function createRecordExtraDataController(savePath: string): XmlStreamCont
   let danmaNum = 0;
   let scNum = 0;
   let guardNum = 0;
+  let pkNum = 0;
   let maxDanmaBucketStart = -1;
   const interactedUsers = new Set<string>();
   const danmaBucketCountMap = new Map<number, number>();
@@ -97,6 +99,7 @@ export function createRecordExtraDataController(savePath: string): XmlStreamCont
     uniqMember: interactedUsers.size,
     scNum,
     guardNum,
+    pkNum,
     danmaStats: getDanmaStats(),
   });
 
@@ -111,7 +114,7 @@ export function createRecordExtraDataController(savePath: string): XmlStreamCont
   };
 
   const trackInteractedUser = (message: Message) => {
-    const userName = message.sender?.name?.trim();
+    const userName = "sender" in message ? message.sender?.name?.trim() : undefined;
     if (!userName) return;
     interactedUsers.add(userName);
   };
@@ -161,6 +164,8 @@ export function createRecordExtraDataController(savePath: string): XmlStreamCont
       scNum += 1;
     } else if (message.type === "guard") {
       guardNum += 1;
+    } else if (message.type === "pk_status" || message.type === "douyin_pk") {
+      pkNum += 1;
     }
     trackInteractedUser(message);
     data.pendingMessages.push(message);
@@ -191,6 +196,7 @@ export function createRecordExtraDataController(savePath: string): XmlStreamCont
       danmaNum = 0;
       scNum = 0;
       guardNum = 0;
+      pkNum = 0;
     }
   };
 
@@ -291,13 +297,56 @@ function generateXmlContent(metadata: XmlStreamData["meta"], messages: Message[]
       };
     });
 
+  const pkRecords = messages
+    .filter((item) => item.type === "pk_status")
+    .map((ele) => {
+      const progress = Math.max((ele.timestamp - metadata.recordStartTimestamp) / 1000, 0);
+      return {
+        "@@ts": progress,
+        "@@status": String(ele.status),
+        "@@opponent": String(ele.opponent?.name ?? ""),
+        "@@timestamp": String(ele.timestamp),
+      };
+    });
+
+  const douyinPkRecords = messages
+    .filter((item) => item.type === "douyin_pk")
+    .map((ele) => {
+      const progress = Math.max((ele.timestamp - metadata.recordStartTimestamp) / 1000, 0);
+      const record: Record<string, unknown> = {
+        "@@ts": progress,
+        "@@event": ele.event,
+        "@@battle_id": String(ele.battleId ?? ele.contextBattleId ?? ""),
+        "@@timestamp": String(ele.timestamp),
+      };
+      if (ele.duration !== undefined) record["@@duration"] = String(ele.duration);
+      if (ele.myScore !== undefined) record["@@my_score"] = String(ele.myScore);
+      if (ele.opponentScore !== undefined) record["@@opponent_score"] = String(ele.opponentScore);
+      if (ele.opponentId) record["@@opponent_id"] = String(ele.opponentId);
+      if (ele.opponentName) record["@@opponent_name"] = String(ele.opponentName);
+      if (ele.opponents && ele.opponents.length > 0) {
+        // 多人 PK：以 id:score:rank 用逗号拼接，便于阅读
+        record["@@opponents"] = ele.opponents
+          .map((o) => `${o.anchorId ?? ""}:${o.score ?? ""}:${o.rank ?? ""}`)
+          .join(",");
+      }
+      return record;
+    });
+
   // 构建这一批消息的XML片段
-  const fragment = {
+  const fragment: Record<string, unknown> = {
     d: comments,
     gift: gifts,
     sc: superChats,
     guard: guardGift,
   };
+  // 仅在存在 PK 记录时写入，避免旧行为产生空的 <pk/> 节点
+  if (pkRecords.length > 0) {
+    fragment.pk = pkRecords;
+  }
+  if (douyinPkRecords.length > 0) {
+    fragment.douyin_pk = douyinPkRecords;
+  }
 
   return builder.build(fragment);
 }

@@ -190,6 +190,15 @@
           </n-form-item>
           <n-form-item v-if="!config.recorder.disableProvideCommentsWhenRecording">
             <template #label>
+              <Tip
+                text="保存 PK 数据"
+                tip="录制 PK 开始/结束状态与比分数据（B站为 PK 状态，抖音为 PK 事件与比分），关闭后不再记录 PK 数据"
+              ></Tip>
+            </template>
+            <n-switch v-model:value="config.recorder.savePkDanma" />
+          </n-form-item>
+          <n-form-item v-if="!config.recorder.disableProvideCommentsWhenRecording">
+            <template #label>
               <span class="inline-flex"> 高能弹幕(SC) </span>
             </template>
             <n-switch v-model:value="config.recorder.saveSCDanma" />

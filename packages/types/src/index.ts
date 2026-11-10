@@ -60,6 +60,7 @@ export const recorderNoGlobalFollowFields: Array<
   "disableProvideCommentsWhenRecording",
   "saveGiftDanma",
   "saveSCDanma",
+  "savePkDanma",
   "saveDanmaStats2DB",
   "segment",
   "uid",
@@ -482,6 +483,8 @@ export interface GlobalRecorder {
   saveGiftDanma?: boolean;
   /** 保存高能弹幕 */
   saveSCDanma?: boolean;
+  /** 保存 PK 数据 */
+  savePkDanma?: boolean;
   /** 弹幕是否使用服务端时间戳 */
   useServerTimestamp: boolean;
   /**分段时长，单位分钟 */
@@ -551,6 +554,8 @@ export interface Recorder {
   disableProvideCommentsWhenRecording?: boolean;
   /** 保存礼物弹幕 */
   saveGiftDanma?: boolean;
+  /** 保存 PK 数据 */
+  savePkDanma?: boolean;
   /** 弹幕是否使用服务端时间戳 */
   useServerTimestamp: boolean;
   /** 保存高能弹幕 */
