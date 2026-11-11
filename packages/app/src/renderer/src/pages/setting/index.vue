@@ -552,6 +552,15 @@ const saveConfig = async (): Promise<boolean> => {
     return false;
   }
 
+  // 清理抖音 PK 主播档案中的空行与首尾空格
+  config.value.douyinAnchorProfiles = (config.value.douyinAnchorProfiles ?? [])
+    .map((item) => ({
+      uid: item.uid?.trim() ?? "",
+      name: item.name?.trim() || undefined,
+      homepage: item.homepage?.trim() || undefined,
+    }))
+    .filter((item) => !!item.uid);
+
   await configApi.save(deepRaw(config.value));
   setTheme(config.value.theme);
   // 设置自动启动

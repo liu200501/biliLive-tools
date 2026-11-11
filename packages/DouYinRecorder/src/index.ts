@@ -22,7 +22,9 @@ import { singleton } from "./utils.js";
 import { resolveShortURL, parseUser } from "./douyin_api.js";
 
 import DouYinDanmaClient from "douyin-danma-listener";
-import type { DouyinPk } from "@bililive-tools/manager";
+import type { DouyinPk, DouyinPkOpponent } from "@bililive-tools/manager";
+
+import { anchorHomepage, getAnchorProfile, rememberAnchor } from "./anchor.js";
 
 import type { APIType } from "./types.js";
 
@@ -135,6 +137,12 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
       uid: this.uid,
     });
     this.liveInfo = liveInfo;
+    // 缓存本房间主播档案，供 PK 时补全名称与主页
+    rememberAnchor({
+      uid: liveInfo.ownerId,
+      name: liveInfo.owner,
+      secUid: liveInfo.uid,
+    });
     isLiveRadio = liveInfo.isLiveRadio;
     this.emit("stateChange", { state: "idle" });
   } catch (error) {
@@ -418,6 +426,20 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
   // PK 比分高频推送，限制最小写入间隔，避免 XML 膨胀
   let lastPkScoreWrite = 0;
   const PK_SCORE_MIN_INTERVAL = 2000;
+  // 每局 PK 的起始时间与对手别名：同一对局内别名固定，避免「对方」随排名漂移
+  let pkBattleId: string | null = null;
+  let pkBattleStartMs = 0;
+  const pkOpponentLabels = new Map<string, string>();
+
+  const pkLabelOf = (anchorId?: string | null) => {
+    const key = anchorId ?? "unknown";
+    const existing = pkOpponentLabels.get(key);
+    if (existing) return existing;
+    const label = `对手${pkOpponentLabels.size + 1}`;
+    pkOpponentLabels.set(key, label);
+    return label;
+  };
+
   client.on("pk", (event) => {
     if (this.savePkDanma === false) return;
     const extraDataController = downloader.getExtraDataController();
@@ -425,6 +447,20 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
     const ownerId = this.liveInfo?.ownerId;
     const matchOwner = (id?: string | null) => !!ownerId && !!id && id === ownerId;
+
+    // 我方主播信息：优先用缓存（含 sec_uid），兜底用配置里的 sec_uid
+    const ownProfile = getAnchorProfile(ownerId);
+    const ownName = ownProfile?.name || this.liveInfo?.owner;
+    const ownHomepage =
+      ownProfile?.homepage ?? anchorHomepage(typeof this.uid === "string" ? this.uid : undefined);
+
+    // 新对局：重置对手别名与计时起点
+    const battleKey = event.battle_id ?? event.context_battle_id ?? null;
+    if (event.type === "start" || (battleKey && battleKey !== pkBattleId)) {
+      pkBattleId = battleKey;
+      pkBattleStartMs = event.start_time_ms || event.create_time_ms || 0;
+      pkOpponentLabels.clear();
+    }
 
     const pkMessage: DouyinPk = {
       type: "douyin_pk",
@@ -434,17 +470,42 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
       contextBattleId: event.context_battle_id,
       duration: event.duration,
     };
+    if (ownName) pkMessage.myName = ownName;
+    if (ownHomepage) pkMessage.myHomepage = ownHomepage;
 
-    const toUsers = (users: { uid: string | null; nickname: string; score: string }[]) =>
-      users.map((u) => ({ uid: u.uid, nickname: u.nickname, score: u.score }));
+    // 距本局开始的秒数，便于还原「开打多少秒」
+    if (event.type === "start") {
+      pkMessage.elapsed = 0;
+    } else if (pkBattleStartMs > 0 && event.create_time_ms > 0) {
+      pkMessage.elapsed = Math.max(
+        Math.round((event.create_time_ms - pkBattleStartMs) / 100) / 10,
+        0,
+      );
+    }
+
+    const toUsers = (
+      users: { uid: string | null; nickname: string; score: string; rank?: number }[],
+    ) =>
+      users.map((u) => ({
+        uid: u.uid,
+        nickname: u.nickname,
+        score: u.score,
+        rank: u.rank,
+      }));
 
     // 比分：区分我方与所有对手（支持多人 PK）
-    const opponents = new Map<string, DouyinPk["opponents"] extends (infer I)[] | undefined ? I : never>();
+    const opponents = new Map<string, DouyinPkOpponent>();
     const getOpponent = (anchorId: string | null | undefined) => {
       const key = anchorId ?? "unknown";
       let opp = opponents.get(key);
       if (!opp) {
-        opp = { anchorId };
+        const profile = getAnchorProfile(anchorId);
+        opp = {
+          anchorId,
+          label: pkLabelOf(anchorId),
+          anchorName: profile?.name,
+          homepage: profile?.homepage,
+        };
         opponents.set(key, opp);
       }
       return opp;
@@ -452,11 +513,19 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
     if ((event.type === "scores" || event.type === "finish") && event.scores?.length) {
       const mine = event.scores.find((s) => matchOwner(s.anchor_id));
-      if (mine) pkMessage.myScore = mine.score;
+      if (mine) {
+        pkMessage.myScore = mine.score;
+        pkMessage.myScoreText = mine.score_blur_text || mine.score;
+        if (mine.battle_rank > 0) pkMessage.myRank = mine.battle_rank;
+      }
       for (const s of event.scores) {
         if (matchOwner(s.anchor_id)) continue;
         const opp = getOpponent(s.anchor_id);
+        const profile = getAnchorProfile(s.anchor_id);
+        if (profile?.name && !opp.anchorName) opp.anchorName = profile.name;
+        if (profile?.homepage && !opp.homepage) opp.homepage = profile.homepage;
         opp.score = s.score;
+        opp.scoreText = s.score_blur_text || s.score;
         opp.rank = s.battle_rank;
       }
     }
@@ -468,18 +537,25 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
       for (const a of event.anchors) {
         if (matchOwner(a.anchor_id)) continue;
         const opp = getOpponent(a.anchor_id);
-        opp.armies = toUsers(a.users);
+        if (a.users.length > 0) opp.armies = toUsers(a.users);
       }
+      const unassigned = (event.unassigned_armies ?? []).flat();
+      if (unassigned.length > 0) pkMessage.unassignedArmies = toUsers(unassigned);
     }
 
     if (opponents.size > 0) {
-      const list = [...opponents.values()].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+      const list = [...opponents.values()].sort((a, b) => {
+        const rankDiff = (a.rank || 999) - (b.rank || 999);
+        if (rankDiff !== 0) return rankDiff;
+        return Number(b.score || 0) - Number(a.score || 0);
+      });
       pkMessage.opponents = list;
-      // 兼容字段：取排名最高的对手
-      const first = list[0];
+      // 兼容字段：取排名最高、且确实有比分的对手
+      const first = list.find((item) => item.score !== undefined) ?? list[0];
       if (first) {
         pkMessage.opponentId = first.anchorId ?? null;
         pkMessage.opponentScore = first.score;
+        pkMessage.opponentScoreText = first.scoreText;
         pkMessage.opponentArmies = first.armies;
       }
     }
@@ -601,6 +677,16 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
   return this.recordHandle;
 };
+
+export {
+  anchorHomepage,
+  getAnchorProfile,
+  normalizeHomepage,
+  parseSecUid,
+  rememberAnchor,
+  setAnchorProfiles,
+} from "./anchor.js";
+export type { AnchorProfile, AnchorProfileInput } from "./anchor.js";
 
 export const provider: RecorderProvider<{}> = {
   id: "DouYin",

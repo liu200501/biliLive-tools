@@ -248,12 +248,29 @@ export class PkMessageHandler {
     const event = decodePkMessage(method, payload, msgId);
     if (!event) return null;
 
-    if (event.msg_id && this.remember(this.seenOrder, this.seen, `${method.replace(/^Webcast/, "")}:${event.msg_id}`)) {
+    if (
+      event.msg_id &&
+      this.remember(this.seenOrder, this.seen, `${method.replace(/^Webcast/, "")}:${event.msg_id}`)
+    ) {
       return null;
     }
 
     const kind = event.type;
     const battleId = event.battle_id;
+
+    // armies 往往没有 msg_id，只能按内容签名去重（同一条快照会被重复推送）；
+    // 有 msg_id 时交给上面的按 id 去重，避免把带新 id 的后续快照误杀
+    if (kind === "armies" && !event.msg_id) {
+      const armyKey = JSON.stringify([
+        event.battle_id ?? event.context_battle_id,
+        event.create_time_ms,
+        (event.anchors ?? []).map((a) => [a.anchor_id, a.users.map((u) => [u.uid, u.score])]),
+        (event.unassigned_armies ?? []).map((army) => army.map((u) => [u.uid, u.score])),
+      ]);
+      if (this.remember(this.seenOrder, this.seen, `armies:${armyKey}`)) {
+        return null;
+      }
+    }
 
     if (kind === "finish") {
       const finishKey = JSON.stringify([
@@ -275,7 +292,11 @@ export class PkMessageHandler {
       if (this.active && battleId === this.active.battle_id) {
         this.active = null;
       }
-    } else if ((kind === "start" || kind === "scores") && battleId && !this.finished.has(battleId)) {
+    } else if (
+      (kind === "start" || kind === "scores") &&
+      battleId &&
+      !this.finished.has(battleId)
+    ) {
       const since = event.start_time_ms || event.create_time_ms;
       const sameBattle = this.active && battleId === this.active.battle_id;
       if (sameBattle) {

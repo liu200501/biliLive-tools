@@ -6,8 +6,14 @@ import { omit, pick, isEmpty, cloneDeep } from "lodash-es";
 import recordHistory from "@biliLive-tools/shared/recorder/recordHistory.js";
 import logger from "@biliLive-tools/shared/utils/log.js";
 import { defaultRecordConfig } from "@biliLive-tools/shared/enum.js";
+import {
+  aggregatePkReportAnchors,
+  scanPkReportAnchors as scanRecentPkReportAnchors,
+} from "@biliLive-tools/shared/recorder/pkReport.js";
+import { getAnchorProfile } from "@bililive-tools/douyin-recorder";
 
 import type { RecorderAPI, ClientRecorder } from "../types/recorder.js";
+import type { PkReportAnchorHit } from "@biliLive-tools/shared/recorder/pkReport.js";
 import type { Recorder, FormatName } from "@bililive-tools/manager";
 
 // RecorderAPI 的实际实现，这里负责实现对外暴露的接口，并假设 Args 都已经由上一层解析好了
@@ -236,6 +242,64 @@ async function getRecentRecordFolder(
   }
 
   throw new Error("未找到最近录制文件");
+}
+
+/** 过滤掉档案里已有（运行时缓存或手动登记）的主播 */
+function filterKnownAnchors(anchors: PkReportAnchorHit[]): PkReportAnchorHit[] {
+  if (anchors.length === 0) return [];
+
+  const appConfig = container.resolve("appConfig");
+  const manual = new Set<string>(
+    (appConfig.get("douyinAnchorProfiles") ?? [])
+      .map((item) => (item?.uid == null ? "" : String(item.uid).trim()))
+      .filter(Boolean),
+  );
+
+  return anchors.filter((item) => {
+    if (manual.has(item.uid)) return false;
+    return !getAnchorProfile(item.uid);
+  });
+}
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(Math.max(Math.round(value), min), max);
+
+/**
+ * 扫描录制目录下最近 N 天的 PK 战报，列出还没登记过的主播 uid
+ */
+async function scanPkReportAnchors(
+  args: RecorderAPI["scanPkReportAnchors"]["Args"],
+): Promise<RecorderAPI["scanPkReportAnchors"]["Resp"]> {
+  const appConfig = container.resolve("appConfig");
+  const importConfig = appConfig.get("douyinAnchorImport");
+
+  if (importConfig?.enabled === false) {
+    return { anchors: [], scannedFiles: 0, reason: "战报扫描已在设置中关闭" };
+  }
+
+  const days = clampNumber(Number(args?.days ?? importConfig?.days ?? 7) || 7, 1, 365);
+  const limit = clampNumber(Number(args?.limit ?? 500) || 500, 1, 5000);
+  const savePath = appConfig.get("recorder")?.savePath;
+
+  const result = await scanRecentPkReportAnchors(savePath, { days, maxFiles: limit });
+  return { ...result, anchors: filterKnownAnchors(result.anchors) };
+}
+
+/**
+ * 解析单份战报内容，列出还没登记过的主播 uid
+ */
+function parsePkReportAnchors(
+  args: RecorderAPI["parsePkReportAnchors"]["Args"],
+): RecorderAPI["parsePkReportAnchors"]["Resp"] {
+  const content = typeof args?.content === "string" ? args.content : "";
+  if (!content.trim()) {
+    return { anchors: [] };
+  }
+  if (content.length > 10 * 1024 * 1024) {
+    throw new Error("战报文件过大");
+  }
+
+  return { anchors: filterKnownAnchors(aggregatePkReportAnchors([{ content }])) };
 }
 
 async function getBiliStream(id: string) {
@@ -528,6 +592,8 @@ export default {
   stopRecord,
   cutRecord,
   getRecentRecordFolder,
+  scanPkReportAnchors,
+  parsePkReportAnchors,
   getLiveInfo,
   batchStartRecord,
   batchStopRecord,

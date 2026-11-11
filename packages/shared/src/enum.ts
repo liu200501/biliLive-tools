@@ -445,6 +445,11 @@ export const APP_DEFAULT_CONFIG: AppConfig = {
     subSavePath: "",
   },
   recorders: [],
+  douyinAnchorProfiles: [],
+  douyinAnchorImport: {
+    enabled: true,
+    days: 7,
+  },
   virtualRecord: {
     config: [],
     startTime: Date.now(),

@@ -646,6 +646,101 @@
               <template #suffix>毫秒</template>
             </n-input-number>
           </n-form-item>
+
+          <div class="divider"></div>
+          <div class="anchor-editor">
+            <div class="anchor-header">
+              <h3>PK 主播档案</h3>
+              <span class="anchor-tip"
+                >抖音 PK 报文只下发主播数字 ID，不含昵称和主页；本机录制过的主播会自动记住。
+                这里可以手动补充从未录制过的对手，保存后立即生效（无需重启）。<br />
+                懒得一个个找 uid 时，可以从战报里批量导入：扫描只读取录制目录下最近 N 天的
+                <code>.pk.md</code> 并提取其中的主播 uid，不会上传任何内容；导入后只需补昵称。 只有
+                uid、没有昵称和主页的行不会生效。</span
+              >
+            </div>
+            <div class="anchor-toolbar">
+              <div class="anchor-toolbar-group">
+                <n-switch v-model:value="anchorImportEnabled" size="small" />
+                <span class="anchor-toolbar-label">战报扫描</span>
+                <n-input-number
+                  v-model:value="anchorImportDays"
+                  size="small"
+                  :min="1"
+                  :max="365"
+                  :disabled="!anchorImportEnabled"
+                  style="width: 120px"
+                >
+                  <template #suffix>天</template>
+                </n-input-number>
+                <span class="anchor-toolbar-label">内</span>
+              </div>
+              <div class="anchor-toolbar-group">
+                <n-button
+                  size="small"
+                  :disabled="!anchorImportEnabled"
+                  :loading="scanning"
+                  @click="scanRecentReports"
+                >
+                  扫描战报
+                </n-button>
+                <n-button size="small" :loading="parsing" @click="importSingleReport"
+                  >导入单场战报</n-button
+                >
+              </div>
+            </div>
+            <div v-if="importHint" class="anchor-hint">{{ importHint }}</div>
+            <div v-if="anchorProfiles.length === 0" class="anchor-empty">
+              暂无手动档案，PK 战报里未识别的对手会显示为「对手1 · 数字ID」。
+            </div>
+            <div v-for="(item, index) in anchorProfiles" :key="index" class="anchor-row">
+              <n-input
+                v-model:value="item.uid"
+                class="anchor-uid"
+                placeholder="主播 uid（战报里的数字 ID）"
+                spellcheck="false"
+              />
+              <n-input
+                v-model:value="item.name"
+                class="anchor-name"
+                placeholder="昵称（可选）"
+                spellcheck="false"
+              />
+              <n-input
+                v-model:value="item.homepage"
+                class="anchor-home"
+                placeholder="主页链接或 sec_uid（可选）"
+                spellcheck="false"
+                @blur="normalizeAnchorHomepage(item)"
+              />
+              <n-button
+                v-if="isValidHomepage(item)"
+                text
+                size="tiny"
+                type="primary"
+                @click="openAnchorHomepage(item)"
+                >打开</n-button
+              >
+              <n-button
+                quaternary
+                circle
+                type="error"
+                title="删除"
+                @click="removeAnchorProfile(index)"
+              >
+                <n-icon><TrashOutline /></n-icon>
+              </n-button>
+            </div>
+            <n-button dashed size="small" @click="addAnchorProfile">
+              <template #icon>
+                <n-icon><AddOutline /></n-icon>
+              </template>
+              添加主播
+            </n-button>
+            <div v-if="invalidAnchorCount > 0" class="anchor-error">
+              有 {{ invalidAnchorCount }} 行缺少 uid，保存后会被忽略。
+            </div>
+          </div>
         </n-tab-pane>
         <n-tab-pane class="tab-pane" name="xhs" tab="小红书" display-directive="show:lazy">
           <h3 style="margin-bottom: 10px">设置Cookie可自动监听，建议使用小号</h3>
@@ -828,9 +923,10 @@
 </template>
 
 <script setup lang="ts">
-import { FolderOpenOutline } from "@vicons/ionicons5";
-import { templateRef } from "@vueuse/core";
+import { FolderOpenOutline, AddOutline, TrashOutline } from "@vicons/ionicons5";
+import { useFileDialog, templateRef } from "@vueuse/core";
 import { useBreakpoints } from "@renderer/hooks";
+import { recoderApi } from "@renderer/apis";
 import { showDirectoryDialog } from "@renderer/utils/fileSystem";
 import { useUserInfoStore, useDouyuUserStore } from "@renderer/stores";
 import { useConfirm } from "@renderer/hooks";
@@ -857,7 +953,7 @@ import {
   tiktokQualityOptions,
 } from "@renderer/enums/recorder";
 
-import type { AppConfig } from "@biliLive-tools/types";
+import type { AppConfig, DouyinAnchorProfile } from "@biliLive-tools/types";
 
 const config = defineModel<AppConfig>("data", {
   default: () => {},
@@ -882,6 +978,140 @@ const selectFolder = async () => {
   if (!file) return;
   config.value.recorder.savePath = file;
 };
+
+// 抖音 PK 主播档案：uid → 昵称/主页，用于补全 PK 报文里缺失的对手信息
+const anchorProfiles = computed<DouyinAnchorProfile[]>({
+  get: () => config.value.douyinAnchorProfiles ?? [],
+  set: (value) => {
+    config.value.douyinAnchorProfiles = value;
+  },
+});
+
+const invalidAnchorCount = computed(
+  () => anchorProfiles.value.filter((item) => !item.uid?.trim()).length,
+);
+
+const addAnchorProfile = () => {
+  anchorProfiles.value = [...anchorProfiles.value, { uid: "", name: "", homepage: "" }];
+};
+
+const removeAnchorProfile = (index: number) => {
+  const list = [...anchorProfiles.value];
+  list.splice(index, 1);
+  anchorProfiles.value = list;
+};
+
+/** 允许直接粘贴 sec_uid 或省略协议的链接，统一补成完整主页链接 */
+const normalizeAnchorHomepage = (item: DouyinAnchorProfile) => {
+  const value = item.homepage?.trim();
+  if (!value) return;
+  if (/^https?:\/\//i.test(value)) return;
+  if (value.includes("/user/")) {
+    item.homepage = `https://${value.replace(/^\/+/, "")}`;
+    return;
+  }
+  item.homepage = `https://www.douyin.com/user/${value}`;
+};
+
+const isValidHomepage = (item: DouyinAnchorProfile) =>
+  /^https?:\/\//i.test(item.homepage?.trim() ?? "");
+
+const openAnchorHomepage = (item: DouyinAnchorProfile) => {
+  const url = item.homepage?.trim();
+  if (!url) return;
+  if (isWeb.value) {
+    window.open(url, "_blank");
+    return;
+  }
+  window.api.openExternal(url);
+};
+
+// 战报导入：开关 + 扫描天数（保存后由后端在扫描时读取）
+const DEFAULT_ANCHOR_IMPORT = { enabled: true, days: 7 };
+const anchorImportValue = computed(() => config.value.douyinAnchorImport ?? DEFAULT_ANCHOR_IMPORT);
+
+const anchorImportEnabled = computed({
+  get: () => anchorImportValue.value.enabled ?? DEFAULT_ANCHOR_IMPORT.enabled,
+  set: (value: boolean) => {
+    config.value.douyinAnchorImport = { ...anchorImportValue.value, enabled: value };
+  },
+});
+
+const anchorImportDays = computed({
+  get: () => anchorImportValue.value.days ?? DEFAULT_ANCHOR_IMPORT.days,
+  set: (value: number | null) => {
+    config.value.douyinAnchorImport = {
+      ...anchorImportValue.value,
+      days: value ?? DEFAULT_ANCHOR_IMPORT.days,
+    };
+  },
+});
+
+const scanning = ref(false);
+const parsing = ref(false);
+const importHint = ref("");
+
+/** 把导入结果合并进编辑区，已有 uid 不重复添加 */
+const mergeImportedAnchors = (hits: { uid: string }[], source: string) => {
+  const existing = new Set(
+    anchorProfiles.value.map((item) => item.uid?.trim() ?? "").filter(Boolean),
+  );
+  const added: DouyinAnchorProfile[] = [];
+  for (const hit of hits) {
+    const uid = hit.uid?.trim();
+    if (!uid || existing.has(uid)) continue;
+    existing.add(uid);
+    added.push({ uid, name: "", homepage: "" });
+  }
+
+  if (added.length > 0) {
+    anchorProfiles.value = [...anchorProfiles.value, ...added];
+    importHint.value = `${source}：新增 ${added.length} 位待命名主播，填好昵称后保存即可。`;
+  } else {
+    importHint.value = `${source}：没有发现新的未识别主播。`;
+  }
+};
+
+const scanRecentReports = async () => {
+  scanning.value = true;
+  importHint.value = "";
+  try {
+    const result = await recoderApi.scanPkReportAnchors({ days: anchorImportDays.value });
+    if (result.reason) {
+      importHint.value = result.reason;
+      return;
+    }
+    mergeImportedAnchors(result.anchors, `扫描 ${result.scannedFiles} 份战报`);
+  } catch (error) {
+    importHint.value = `扫描失败：${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    scanning.value = false;
+  }
+};
+
+const { open: openReportFile, onChange: onReportFileChange } = useFileDialog({
+  accept: ".md",
+  multiple: false,
+});
+
+onReportFileChange(async (files) => {
+  const file = files?.[0];
+  if (!file) return;
+
+  parsing.value = true;
+  importHint.value = "";
+  try {
+    const content = await file.text();
+    const result = await recoderApi.parsePkReportAnchors(content);
+    mergeImportedAnchors(result.anchors, file.name);
+  } catch (error) {
+    importHint.value = `导入失败：${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    parsing.value = false;
+  }
+});
+
+const importSingleReport = () => openReportFile();
 const titleList = ref([
   {
     value: "{platform}",
@@ -1066,5 +1296,70 @@ h3 {
   background-color: var(--bg-hover);
   margin-bottom: 14px;
   margin-top: -10px;
+}
+
+.anchor-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+.anchor-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.anchor-tip {
+  font-size: 12px;
+  color: var(--text-color-3, #999);
+  line-height: 1.6;
+}
+.anchor-empty {
+  font-size: 12px;
+  color: var(--text-color-3, #999);
+}
+.anchor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--bg-hover, #f5f7fa);
+}
+.anchor-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.anchor-toolbar-label {
+  font-size: 13px;
+  color: var(--text-color-2, #666);
+}
+.anchor-hint {
+  font-size: 12px;
+  color: var(--primary-color, #18a058);
+}
+.anchor-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  .anchor-uid {
+    width: 220px;
+    flex: none;
+  }
+  .anchor-name {
+    width: 160px;
+    flex: none;
+  }
+  .anchor-home {
+    flex: 1;
+    min-width: 200px;
+  }
+}
+.anchor-error {
+  font-size: 12px;
+  color: #d03050;
 }
 </style>

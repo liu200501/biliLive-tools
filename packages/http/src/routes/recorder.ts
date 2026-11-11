@@ -342,6 +342,24 @@ router.post("/add", async (ctx) => {
 });
 
 /**
+ * 扫描录制目录下最近 N 天的 PK 战报，列出未登记过的主播
+ * @route POST /recorder/pk/anchors/scan
+ */
+router.post("/pk/anchors/scan", async (ctx) => {
+  const args = (ctx.request.body ?? {}) as RecorderAPI["scanPkReportAnchors"]["Args"];
+  ctx.body = { payload: await recorderService.scanPkReportAnchors(args) };
+});
+
+/**
+ * 解析单份 PK 战报内容，列出未登记过的主播
+ * @route POST /recorder/pk/anchors/parse
+ */
+router.post("/pk/anchors/parse", (ctx) => {
+  const args = (ctx.request.body ?? {}) as RecorderAPI["parsePkReportAnchors"]["Args"];
+  ctx.body = { payload: recorderService.parsePkReportAnchors(args) };
+});
+
+/**
  * 获取直播间配置信息
  * @route GET /recorder/:recorderId
  * @param recorderId 直播间ID

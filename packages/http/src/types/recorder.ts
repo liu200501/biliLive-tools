@@ -7,6 +7,7 @@ import type {
   StreamerDetailQueryArgs as SharedStreamerDetailQueryArgs,
   StreamerDetailResult as StreamerDetailResponse,
 } from "@biliLive-tools/shared/db/service/streamerDetailService.js";
+import type { PkReportAnchorHit } from "@biliLive-tools/shared/recorder/pkReport.js";
 
 import type { Recorder as RecoderConfig } from "@biliLive-tools/types";
 
@@ -259,6 +260,32 @@ export interface GetRecentRecordFolderResp {
   folderPath: string;
 }
 
+export interface ScanPkReportAnchorsArgs {
+  /** 扫描最近多少天，默认取设置里的值 */
+  days?: number;
+  /** 最多扫描多少份战报 */
+  limit?: number;
+}
+
+export interface ScanPkReportAnchorsResp {
+  /** 未在主播档案里的对手 uid */
+  anchors: PkReportAnchorHit[];
+  /** 实际扫描的战报数量 */
+  scannedFiles: number;
+  /** 无法扫描时的原因 */
+  reason?: string;
+}
+
+export interface ParsePkReportAnchorsArgs {
+  /** 单份战报的 Markdown 内容 */
+  content: string;
+}
+
+export interface ParsePkReportAnchorsResp {
+  /** 未在主播档案里的对手 uid */
+  anchors: PkReportAnchorHit[];
+}
+
 export type RecorderAPI = {
   getLiveInfo: {
     Args: GetLiveInfoArgs;
@@ -307,6 +334,14 @@ export type RecorderAPI = {
   getRecentRecordFolder: {
     Args: GetRecentRecordFolderArgs;
     Resp: GetRecentRecordFolderResp;
+  };
+  scanPkReportAnchors: {
+    Args: ScanPkReportAnchorsArgs;
+    Resp: ScanPkReportAnchorsResp;
+  };
+  parsePkReportAnchors: {
+    Args: ParsePkReportAnchorsArgs;
+    Resp: ParsePkReportAnchorsResp;
   };
   queryStreamerDetail: {
     Args: QueryStreamerDetailArgs;

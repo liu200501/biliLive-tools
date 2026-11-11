@@ -94,4 +94,13 @@ describe("PkMessageHandler", () => {
     // finish 之后 armies 不再关联旧 battle
     expect(handler.handle("LinkMicArmiesMethod", ARMIES, 101)!.context_battle_id).toBeNull();
   });
+
+  it("should dedup armies snapshots without msg_id", () => {
+    const handler = new PkMessageHandler();
+    // 该 payload 没有 common.msgId，只能按内容签名去重
+    const payload = Buffer.from("\x22\x02\x08\x01", "binary");
+
+    expect(handler.handle("LinkMicArmiesMethod", payload)).not.toBeNull();
+    expect(handler.handle("LinkMicArmiesMethod", payload)).toBeNull();
+  });
 });

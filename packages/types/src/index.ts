@@ -622,6 +622,21 @@ export interface Recorder {
   noGlobalFollowFields: typeof recorderNoGlobalFollowFields;
 }
 
+/**
+ * 抖音 PK 主播档案（手动维护）
+ *
+ * 抖音 PK 报文只带主播数字 uid，不含昵称与 sec_uid，无法直接补全名称与主页。
+ * 本机录制过的直播间会自动进缓存；没录过的对手可在此手动登记。
+ */
+export interface DouyinAnchorProfile {
+  /** 主播 uid，即 PK 报文里的 user_id_str */
+  uid: string;
+  /** 主播昵称 */
+  name?: string;
+  /** 抖音主页链接；填 sec_uid 时会自动转换为主页链接 */
+  homepage?: string;
+}
+
 export type SyncType = "baiduPCS" | "aliyunpan" | "alist" | "pan123" | "copy";
 
 export type AliyunPanDriveType = "backup" | "resource";
@@ -870,6 +885,15 @@ export interface AppConfig {
   };
   /** 录制配置 */
   recorder: GlobalRecorder;
+  /** 抖音 PK 主播档案，用于补全 PK 报文里缺失的昵称与主页 */
+  douyinAnchorProfiles?: DouyinAnchorProfile[];
+  /** 抖音 PK 主播档案导入设置 */
+  douyinAnchorImport?: {
+    /** 是否允许扫描录制目录下的战报，批量导入未识别主播 */
+    enabled: boolean;
+    /** 扫描最近多少天的战报 */
+    days: number;
+  };
   /** 直播间管理 */
   recorders: Recorder[];
   // 视频订阅

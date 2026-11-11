@@ -94,10 +94,22 @@ export interface DouyinPk<E extends AnyObject = UnknownObject> {
   contextBattleId?: string | null;
   /** PK 时长（秒） */
   duration?: number;
+  /** 距本局 PK 开始的秒数（start 事件为 0） */
+  elapsed?: number;
   /** 我方 PK 值 */
   myScore?: string;
+  /** 我方 PK 值的可读文案（如「2.5万」），抖音未提供时回退为原始值 */
+  myScoreText?: string;
+  /** 我方当前排名（来自 battle_rank） */
+  myRank?: number;
+  /** 我方主播昵称 */
+  myName?: string;
+  /** 我方主播主页链接 */
+  myHomepage?: string;
   /** 对方 PK 值（仅单对手时的兼容字段，等同 opponents[0].score） */
   opponentScore?: string;
+  /** 对方 PK 值的可读文案 */
+  opponentScoreText?: string;
   /** 对方主播 uid（兼容字段） */
   opponentId?: string | null;
   /** 对方主播昵称（如可获取） */
@@ -105,9 +117,11 @@ export interface DouyinPk<E extends AnyObject = UnknownObject> {
   /** 所有对手（支持多人 PK） */
   opponents?: DouyinPkOpponent[];
   /** 我方贡献榜前三 */
-  myArmies?: { uid?: string | null; nickname: string; score: string }[];
+  myArmies?: { uid?: string | null; nickname: string; score: string; rank?: number }[];
   /** 对方贡献榜前三（兼容字段，等同 opponents[0].armies） */
-  opponentArmies?: { uid?: string | null; nickname: string; score: string }[];
+  opponentArmies?: { uid?: string | null; nickname: string; score: string; rank?: number }[];
+  /** 无法对应到具体主播的助力（多人 PK 的散票） */
+  unassignedArmies?: { uid?: string | null; nickname: string; score: string; rank?: number }[];
   extra?: E;
 }
 
@@ -115,10 +129,16 @@ export interface DouyinPk<E extends AnyObject = UnknownObject> {
 export interface DouyinPkOpponent {
   anchorId?: string | null;
   anchorName?: string | null;
+  /** 主播主页链接（需已知 sec_uid） */
+  homepage?: string;
+  /** 同一对局内稳定的展示别名，如「对手1」 */
+  label?: string;
   score?: string;
+  /** 分值的可读文案（如「13.1万」） */
+  scoreText?: string;
   rank?: number;
   /** 对方贡献榜前三 */
-  armies?: { uid?: string | null; nickname: string; score: string }[];
+  armies?: { uid?: string | null; nickname: string; score: string; rank?: number }[];
 }
 
 export type Message = Comment | GiveGift | SuperChat | Guard | PkStatus | DouyinPk;

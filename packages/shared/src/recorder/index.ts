@@ -6,7 +6,10 @@ import { cloneDeep, omit } from "lodash-es";
 import { provider as providerForDouYu } from "@bililive-tools/douyu-recorder";
 import { provider as providerForHuYa } from "@bililive-tools/huya-recorder";
 import { provider as providerForBiliBili } from "@bililive-tools/bilibili-recorder";
-import { provider as providerForDouYin } from "@bililive-tools/douyin-recorder";
+import {
+  provider as providerForDouYin,
+  setAnchorProfiles as setDouyinAnchorProfiles,
+} from "@bililive-tools/douyin-recorder";
 import { provider as providerForXHS } from "@bililive-tools/xhs-recorder";
 import { provider as providerForTikTok } from "@bililive-tools/tiktok-recorder";
 
@@ -376,6 +379,16 @@ export async function createRecorderManager(appConfig: AppConfig) {
   const managerOptions = await buildManagerOptions(config);
   const manager = createManager(managerOptions);
 
+  // 手动维护的抖音 PK 主播档案（uid → 昵称/主页），用于补全 PK 报文里缺失的对手信息
+  const applyDouyinAnchorProfiles = (data: AppConfigType) => {
+    try {
+      setDouyinAnchorProfiles(data?.douyinAnchorProfiles ?? []);
+    } catch (error) {
+      logger.error("applyDouyinAnchorProfiles error", error);
+    }
+  };
+  applyDouyinAnchorProfiles(config);
+
   manager.on("RecorderDebugLog", ({ recorder, ...log }) => {
     if (log.type !== "ffmpeg") {
       logger.info(`recorder: ${log.text}`);
@@ -712,6 +725,8 @@ export async function createRecorderManager(appConfig: AppConfig) {
   });
 
   appConfig.on("update", (_newVal, _oldVal, key) => {
+    // 主播档案随时可改，不随录制器配置一起跳过
+    applyDouyinAnchorProfiles(appConfig.getAll());
     // @ts-ignore
     if (["tool", "recorders"].includes(key)) return;
     const { ffmpegPath, mesioPath, bililiveRecorderPath } = getBinPath();

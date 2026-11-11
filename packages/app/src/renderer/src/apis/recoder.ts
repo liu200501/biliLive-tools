@@ -84,6 +84,22 @@ const getRecentRecordFolder = async (
   return res.data.payload;
 };
 
+/** 扫描录制目录下最近 N 天的 PK 战报，列出未登记的主播 */
+const scanPkReportAnchors = async (
+  data: RecorderAPI["scanPkReportAnchors"]["Args"] = {},
+): Promise<RecorderAPI["scanPkReportAnchors"]["Resp"]> => {
+  const res = await request.post(`/recorder/pk/anchors/scan`, data);
+  return res.data.payload;
+};
+
+/** 解析单份 PK 战报内容，列出未登记的主播 */
+const parsePkReportAnchors = async (
+  content: string,
+): Promise<RecorderAPI["parsePkReportAnchors"]["Resp"]> => {
+  const res = await request.post(`/recorder/pk/anchors/parse`, { content });
+  return res.data.payload;
+};
+
 const batchStartRecord = async (
   ids: string[],
 ): Promise<RecorderAPI["batchStartRecord"]["Resp"]> => {
@@ -156,6 +172,8 @@ const recoder = {
   getLiveInfo,
   cut,
   getRecentRecordFolder,
+  scanPkReportAnchors,
+  parsePkReportAnchors,
   queryStreamerDetail,
   queryRecordCalendar,
 };

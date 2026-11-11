@@ -4,6 +4,8 @@ import fs from "fs-extra";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { danmaReport } from "../../src/danmu/index.js";
 
+const setAnchorProfilesMock = vi.fn();
+
 const fakeManager = Object.assign(new EventEmitter(), {
   autoCheckInterval: 0,
   maxThreadCount: 0,
@@ -40,7 +42,10 @@ class MockRecorderConfig {
 vi.mock("@bililive-tools/douyu-recorder", () => ({ provider: { id: "douyu" } }));
 vi.mock("@bililive-tools/huya-recorder", () => ({ provider: { id: "huya" } }));
 vi.mock("@bililive-tools/bilibili-recorder", () => ({ provider: { id: "bilibili" } }));
-vi.mock("@bililive-tools/douyin-recorder", () => ({ provider: { id: "douyin" } }));
+vi.mock("@bililive-tools/douyin-recorder", () => ({
+  provider: { id: "douyin" },
+  setAnchorProfiles: (profiles: unknown) => setAnchorProfilesMock(profiles),
+}));
 vi.mock("@bililive-tools/xhs-recorder", () => ({ provider: { id: "xhs" } }));
 vi.mock("@bililive-tools/manager", () => ({
   createRecorderManager: vi.fn(() => fakeManager),
@@ -228,4 +233,45 @@ describe("shared recorder videoFileCompleted", () => {
       }
     },
   );
+
+  it("applies douyin anchor profiles from app config and on update", async () => {
+    setAnchorProfilesMock.mockReset();
+    const profiles = [
+      { uid: "92688084797", name: "七七不叭叭", homepage: "https://www.douyin.com/user/abc" },
+    ];
+    const data = {
+      port: 18010,
+      douyinAnchorProfiles: profiles,
+      recorder: {
+        savePath: "records",
+        nameRule: "{title}",
+        autoRecord: false,
+        recordRetryImmediately: false,
+        bilibili: {},
+        douyu: {},
+        huya: {},
+        douyin: {},
+        xhs: {},
+      },
+      notification: { setting: {}, taskNotificationType: {} },
+    };
+    const appConfig = {
+      getAll: vi.fn(() => data),
+      on: vi.fn(),
+    } as any;
+
+    await createRecorderManager(appConfig);
+
+    // 创建 manager 时按配置注入一次
+    expect(setAnchorProfilesMock).toHaveBeenCalledWith(profiles);
+
+    // 配置更新后重新注入（即使只改了档案，也要生效）
+    const nextProfiles = [{ uid: "111", name: "新档案" }];
+    data.douyinAnchorProfiles = nextProfiles as any;
+    const updateHandler = appConfig.on.mock.calls.find((call: any[]) => call[0] === "update")?.[1];
+    expect(updateHandler).toBeTypeOf("function");
+    updateHandler(null, null, "douyinAnchorProfiles");
+
+    expect(setAnchorProfilesMock).toHaveBeenLastCalledWith(nextProfiles);
+  });
 });
