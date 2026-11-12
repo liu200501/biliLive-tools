@@ -446,6 +446,10 @@ export const APP_DEFAULT_CONFIG: AppConfig = {
   },
   recorders: [],
   douyinAnchorProfiles: [],
+  douyinAnchorLookup: {
+    enabled: true,
+    cache: {},
+  },
   douyinAnchorImport: {
     enabled: true,
     days: 7,

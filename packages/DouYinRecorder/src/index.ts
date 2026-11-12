@@ -24,7 +24,12 @@ import { resolveShortURL, parseUser } from "./douyin_api.js";
 import DouYinDanmaClient from "douyin-danma-listener";
 import type { DouyinPk, DouyinPkOpponent } from "@bililive-tools/manager";
 
-import { anchorHomepage, getAnchorProfile, rememberAnchor } from "./anchor.js";
+import {
+  anchorHomepage,
+  getAnchorProfile,
+  rememberAnchor,
+  resolveAnchorProfiles,
+} from "./anchor.js";
 
 import type { APIType } from "./types.js";
 
@@ -314,7 +319,13 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
     // 排查 PK 等消息时，设置环境变量 DOUYIN_DEBUG_METHOD=1 可打印未处理的 method
     debugMethod: process.env.DOUYIN_DEBUG_METHOD === "1",
   });
-  console.log("DouYinDanmaClient", this?.liveInfo?.liveId, this.cookieMode, this.auth);
+  // 只打印模式与是否带 cookie，绝不打明文 cookie
+  console.log(
+    "DouYinDanmaClient",
+    this?.liveInfo?.liveId,
+    this.cookieMode,
+    this.auth && this.cookieMode !== "stream" ? "cookie: 已配置" : "cookie: 匿名",
+  );
   client.on("chat", (msg) => {
     const extraDataController = downloader.getExtraDataController();
     if (!extraDataController) return;
@@ -444,6 +455,13 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
     if (this.savePkDanma === false) return;
     const extraDataController = downloader.getExtraDataController();
     if (!extraDataController) return;
+
+    // PK 报文只带数字 uid，这里提前异步补全昵称/主页；
+    // 不阻塞当前消息，比分事件每 2s 一条，后续就能带上名称。
+    void resolveAnchorProfiles([
+      ...(event.scores ?? []).map((item) => item.anchor_id),
+      ...(event.anchors ?? []).map((item) => item.anchor_id),
+    ]);
 
     const ownerId = this.liveInfo?.ownerId;
     const matchOwner = (id?: string | null) => !!ownerId && !!id && id === ownerId;
@@ -680,13 +698,19 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
 
 export {
   anchorHomepage,
+  fetchAnchorProfile,
   getAnchorProfile,
+  isAnchorLookupEnabled,
   normalizeHomepage,
+  onAnchorProfileResolved,
   parseSecUid,
   rememberAnchor,
+  resolveAnchorProfiles,
+  seedAnchorProfiles,
+  setAnchorLookupEnabled,
   setAnchorProfiles,
 } from "./anchor.js";
-export type { AnchorProfile, AnchorProfileInput } from "./anchor.js";
+export type { AnchorProfile, AnchorProfileCache, AnchorProfileInput } from "./anchor.js";
 
 export const provider: RecorderProvider<{}> = {
   id: "DouYin",

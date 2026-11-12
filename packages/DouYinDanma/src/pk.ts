@@ -124,6 +124,91 @@ function decodeMapKey(key: string): string | null {
   return result && result !== "0" ? result : null;
 }
 
+function readVarint(bytes: Uint8Array, start: number): { value: bigint; pos: number } {
+  let value = 0n;
+  let shift = 0n;
+  let pos = start;
+  while (pos < bytes.length) {
+    const byte = bytes[pos++];
+    value |= BigInt(byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) break;
+    shift += 7n;
+  }
+  return { value, pos };
+}
+
+type DecodedArmy = { anchor_id: string | null; users: any[] };
+
+/**
+ * 直接从原始字节里读 `user_armies_map`。
+ *
+ * protobufjs 未加载 `long` 时会把 int64 解成 JS Number，19 位 uid 会丢掉末几位
+ * （7669311243275273253 → 7669311243275273000），导致同一个主播被当成两个对手。
+ * 这里用 BigInt 逐字节读 varint，保证 map key 精确。
+ */
+function readArmyMapEntries(payload: Uint8Array): DecodedArmy[] | null {
+  const UserArmies = (protobuf as any).douyin?.UserArmies;
+  if (!UserArmies) return null;
+
+  const entries: DecodedArmy[] = [];
+  let pos = 0;
+  while (pos < payload.length) {
+    const tag = readVarint(payload, pos);
+    pos = tag.pos;
+    const field = Number(tag.value >> 3n);
+    const wire = Number(tag.value & 7n);
+
+    if (wire === 2) {
+      const length = readVarint(payload, pos);
+      pos = length.pos;
+      const end = Math.min(pos + Number(length.value), payload.length);
+      if (field === 2) {
+        let cursor = pos;
+        let anchorId: string | null = null;
+        let users: any[] = [];
+        while (cursor < end) {
+          const entryTag = readVarint(payload, cursor);
+          cursor = entryTag.pos;
+          const entryField = Number(entryTag.value >> 3n);
+          const entryWire = Number(entryTag.value & 7n);
+          if (entryWire === 0) {
+            const value = readVarint(payload, cursor);
+            cursor = value.pos;
+            if (entryField === 1) anchorId = value.value.toString();
+          } else if (entryWire === 2) {
+            const entryLength = readVarint(payload, cursor);
+            cursor = entryLength.pos;
+            const sliceEnd = Math.min(cursor + Number(entryLength.value), end);
+            if (entryField === 2) {
+              const decoded = UserArmies.decode(payload.subarray(cursor, sliceEnd)) as any;
+              users = decoded?.userArmies ?? [];
+            }
+            cursor = sliceEnd;
+          } else if (entryWire === 5) {
+            cursor += 4;
+          } else if (entryWire === 1) {
+            cursor += 8;
+          } else {
+            break;
+          }
+        }
+        if (anchorId && anchorId !== "0") entries.push({ anchor_id: anchorId, users });
+      }
+      pos = end;
+    } else if (wire === 0) {
+      pos = readVarint(payload, pos).pos;
+    } else if (wire === 5) {
+      pos += 4;
+    } else if (wire === 1) {
+      pos += 8;
+    } else {
+      return null;
+    }
+  }
+
+  return entries.length > 0 ? entries : null;
+}
+
 function timeMs(value: number): number {
   // create_time 可能以秒或毫秒出现
   return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
@@ -179,16 +264,40 @@ export function decodePkMessage(method: string, payload: Uint8Array, msgId = 0):
     event.scores = scores(message.userScores ?? []);
   } else if (canonical === "LinkMicArmiesMethod") {
     event.type = "armies";
-    const map = message.userArmiesMap ?? {};
-    event.anchors = Object.keys(map)
-      .sort()
-      .map((anchor) => ({
-        anchor_id: decodeMapKey(anchor),
-        users: ranks(map[anchor]?.userArmies ?? []),
-      }));
-    event.unassigned_armies = (message.userArmiesList ?? []).map((army: any) =>
-      ranks(army.userArmies ?? []),
+    // 优先从原始字节精确还原 map key（见 readArmyMapEntries 注释）
+    const exact = readArmyMapEntries(payload);
+    if (exact) {
+      event.anchors = exact
+        .map((army) => ({
+          anchor_id: army.anchor_id,
+          users: ranks(army.users),
+        }))
+        .sort((a, b) => (a.anchor_id ?? "").localeCompare(b.anchor_id ?? ""));
+    } else {
+      const map = message.userArmiesMap ?? {};
+      event.anchors = Object.keys(map)
+        .sort()
+        .map((anchor) => ({
+          anchor_id: decodeMapKey(anchor),
+          users: ranks(map[anchor]?.userArmies ?? []),
+        }));
+    }
+
+    // user_armies_list 在真实报文里是「全部助力」的汇总，会和归属榜重复，
+    // 这里剔除已经归属到某位主播的用户，只留真正对不上主播的散票。
+    const attributed = new Set(
+      (event.anchors ?? []).flatMap((army) => army.users.map((user) => user.uid)),
     );
+    const seen = new Set<string>();
+    const unassigned: PkRankUser[] = [];
+    for (const army of message.userArmiesList ?? []) {
+      for (const user of ranks(army?.userArmies ?? [])) {
+        if (!user.uid || attributed.has(user.uid) || seen.has(user.uid)) continue;
+        seen.add(user.uid);
+        unassigned.push(user);
+      }
+    }
+    event.unassigned_armies = unassigned.length > 0 ? [unassigned] : [];
     // rank_list_v2 为 bytes，非空表示使用未支持的玩法 schema
     const v2 = message.rankListV2;
     event.has_unsupported_rank_list_v2 = !!(v2 && v2.length > 0);

@@ -637,6 +637,19 @@ export interface DouyinAnchorProfile {
   homepage?: string;
 }
 
+/**
+ * 抖音 PK 主播在线补全设置。
+ *
+ * 依赖未公开的直播端用户接口，随时可能失效，详见
+ * packages/DouYinRecorder/ANCHOR_LOOKUP.md。
+ */
+export interface DouyinAnchorLookup {
+  /** 是否允许按 uid 查询昵称与主页；关闭后只使用本机解析与手动档案 */
+  enabled: boolean;
+  /** 查询成功的档案缓存，避免重启后重复请求；uid → 档案 */
+  cache?: Record<string, { name?: string; secUid?: string; homepage?: string }>;
+}
+
 export type SyncType = "baiduPCS" | "aliyunpan" | "alist" | "pan123" | "copy";
 
 export type AliyunPanDriveType = "backup" | "resource";
@@ -887,6 +900,8 @@ export interface AppConfig {
   recorder: GlobalRecorder;
   /** 抖音 PK 主播档案，用于补全 PK 报文里缺失的昵称与主页 */
   douyinAnchorProfiles?: DouyinAnchorProfile[];
+  /** 抖音 PK 主播在线补全开关与缓存 */
+  douyinAnchorLookup?: DouyinAnchorLookup;
   /** 抖音 PK 主播档案导入设置 */
   douyinAnchorImport?: {
     /** 是否允许扫描录制目录下的战报，批量导入未识别主播 */

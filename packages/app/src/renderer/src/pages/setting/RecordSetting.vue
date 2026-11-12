@@ -652,14 +652,19 @@
             <div class="anchor-header">
               <h3>PK 主播档案</h3>
               <span class="anchor-tip"
-                >抖音 PK 报文只下发主播数字 ID，不含昵称和主页；本机录制过的主播会自动记住。
-                这里可以手动补充从未录制过的对手，保存后立即生效（无需重启）。<br />
+                >抖音 PK 报文只下发主播数字 ID，录制时会自动按 uid
+                查询昵称与主页（可关闭「在线补全昵称」）。
+                查不到的（接口失败、或主播注销）可以在这里手动补充，保存后立即生效（无需重启）。<br />
                 懒得一个个找 uid 时，可以从战报里批量导入：扫描只读取录制目录下最近 N 天的
                 <code>.pk.md</code> 并提取其中的主播 uid，不会上传任何内容；导入后只需补昵称。 只有
                 uid、没有昵称和主页的行不会生效。</span
               >
             </div>
             <div class="anchor-toolbar">
+              <div class="anchor-toolbar-group">
+                <n-switch v-model:value="anchorLookupEnabled" size="small" />
+                <span class="anchor-toolbar-label">在线补全昵称</span>
+              </div>
               <div class="anchor-toolbar-group">
                 <n-switch v-model:value="anchorImportEnabled" size="small" />
                 <span class="anchor-toolbar-label">战报扫描</span>
@@ -1025,6 +1030,18 @@ const openAnchorHomepage = (item: DouyinAnchorProfile) => {
   }
   window.api.openExternal(url);
 };
+
+// 在线补全：关闭后不再向抖音发起查询，只用本机解析与手动档案
+const DEFAULT_ANCHOR_LOOKUP = { enabled: true };
+const anchorLookupEnabled = computed({
+  get: () => config.value.douyinAnchorLookup?.enabled ?? DEFAULT_ANCHOR_LOOKUP.enabled,
+  set: (value: boolean) => {
+    config.value.douyinAnchorLookup = {
+      ...(config.value.douyinAnchorLookup ?? DEFAULT_ANCHOR_LOOKUP),
+      enabled: value,
+    };
+  },
+});
 
 // 战报导入：开关 + 扫描天数（保存后由后端在扫描时读取）
 const DEFAULT_ANCHOR_IMPORT = { enabled: true, days: 7 };

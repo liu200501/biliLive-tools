@@ -460,7 +460,7 @@ export function buildPkMarkdown(meta: XmlStreamData["meta"], messages: DouyinPkM
     "**说明**",
     "",
     "- 助力榜来自抖音推送的部分快照（通常为每名主播前 3 名），不是完整榜单。",
-    "- 抖音 PK 消息本身只下发主播 ID，昵称与主页链接来自本机已解析过的直播间信息；未解析过的对手仅显示 ID。",
+    "- 抖音 PK 消息本身只下发主播 ID，昵称与主页由抖音用户接口按 uid 自动补全；接口不可用或查不到时才回退为纯 ID。",
     "- `rank_list_v2` 玩法暂未解析，特殊 PK 玩法可能缺少数据。",
     "",
   );

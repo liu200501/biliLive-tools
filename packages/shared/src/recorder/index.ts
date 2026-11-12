@@ -8,6 +8,9 @@ import { provider as providerForHuYa } from "@bililive-tools/huya-recorder";
 import { provider as providerForBiliBili } from "@bililive-tools/bilibili-recorder";
 import {
   provider as providerForDouYin,
+  onAnchorProfileResolved as onDouyinAnchorProfileResolved,
+  seedAnchorProfiles as seedDouyinAnchorProfiles,
+  setAnchorLookupEnabled as setDouyinAnchorLookupEnabled,
   setAnchorProfiles as setDouyinAnchorProfiles,
 } from "@bililive-tools/douyin-recorder";
 import { provider as providerForXHS } from "@bililive-tools/xhs-recorder";
@@ -46,6 +49,8 @@ export { RecorderConfig };
 
 // 缓存直播结束通知的最后触发时间，避免频繁通知
 const endLiveNotificationCache = new Map<string, number>();
+/** 避免同一个 appConfig 实例重复注册档案持久化监听 */
+const douyinCachePersistedFor = new WeakSet<object>();
 
 type RecorderExternalSource = {
   channelId: string;
@@ -379,15 +384,45 @@ export async function createRecorderManager(appConfig: AppConfig) {
   const managerOptions = await buildManagerOptions(config);
   const manager = createManager(managerOptions);
 
-  // 手动维护的抖音 PK 主播档案（uid → 昵称/主页），用于补全 PK 报文里缺失的对手信息
+  // 抖音 PK 主播档案：手动登记 + 在线补全开关 + 持久化缓存
   const applyDouyinAnchorProfiles = (data: AppConfigType) => {
     try {
       setDouyinAnchorProfiles(data?.douyinAnchorProfiles ?? []);
+      setDouyinAnchorLookupEnabled(data?.douyinAnchorLookup?.enabled);
+      seedDouyinAnchorProfiles(data?.douyinAnchorLookup?.cache);
     } catch (error) {
       logger.error("applyDouyinAnchorProfiles error", error);
     }
   };
   applyDouyinAnchorProfiles(config);
+
+  // 在线补全成功的结果写回配置缓存（防抖 3s，避免一场 PK 反复写盘）
+  if (!douyinCachePersistedFor.has(appConfig)) {
+    douyinCachePersistedFor.add(appConfig);
+    const pendingCache = new Map<string, { name?: string; secUid?: string; homepage?: string }>();
+    let cacheWriteTimer: ReturnType<typeof setTimeout> | undefined;
+    onDouyinAnchorProfileResolved((profile) => {
+      pendingCache.set(profile.uid, {
+        name: profile.name,
+        secUid: profile.secUid,
+        homepage: profile.homepage,
+      });
+      if (cacheWriteTimer) clearTimeout(cacheWriteTimer);
+      cacheWriteTimer = setTimeout(() => {
+        cacheWriteTimer = undefined;
+        try {
+          const current = appConfig.get("douyinAnchorLookup") ?? { enabled: true, cache: {} };
+          appConfig.set("douyinAnchorLookup", {
+            enabled: current.enabled ?? true,
+            cache: { ...(current.cache ?? {}), ...Object.fromEntries(pendingCache) },
+          });
+          pendingCache.clear();
+        } catch (error) {
+          logger.error("persist douyin anchor cache error", error);
+        }
+      }, 3000);
+    });
+  }
 
   manager.on("RecorderDebugLog", ({ recorder, ...log }) => {
     if (log.type !== "ffmpeg") {

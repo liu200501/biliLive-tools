@@ -5,6 +5,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { danmaReport } from "../../src/danmu/index.js";
 
 const setAnchorProfilesMock = vi.fn();
+const setAnchorLookupEnabledMock = vi.fn();
+const seedAnchorProfilesMock = vi.fn();
 
 const fakeManager = Object.assign(new EventEmitter(), {
   autoCheckInterval: 0,
@@ -45,6 +47,9 @@ vi.mock("@bililive-tools/bilibili-recorder", () => ({ provider: { id: "bilibili"
 vi.mock("@bililive-tools/douyin-recorder", () => ({
   provider: { id: "douyin" },
   setAnchorProfiles: (profiles: unknown) => setAnchorProfilesMock(profiles),
+  setAnchorLookupEnabled: (enabled: unknown) => setAnchorLookupEnabledMock(enabled),
+  seedAnchorProfiles: (cache: unknown) => seedAnchorProfilesMock(cache),
+  onAnchorProfileResolved: () => () => {},
 }));
 vi.mock("@bililive-tools/xhs-recorder", () => ({ provider: { id: "xhs" } }));
 vi.mock("@bililive-tools/manager", () => ({
@@ -236,12 +241,18 @@ describe("shared recorder videoFileCompleted", () => {
 
   it("applies douyin anchor profiles from app config and on update", async () => {
     setAnchorProfilesMock.mockReset();
+    setAnchorLookupEnabledMock.mockReset();
+    seedAnchorProfilesMock.mockReset();
     const profiles = [
       { uid: "92688084797", name: "七七不叭叭", homepage: "https://www.douyin.com/user/abc" },
     ];
     const data = {
       port: 18010,
       douyinAnchorProfiles: profiles,
+      douyinAnchorLookup: {
+        enabled: false,
+        cache: { "1222256387166987": { name: "与舟渡" } },
+      },
       recorder: {
         savePath: "records",
         nameRule: "{title}",
@@ -262,8 +273,10 @@ describe("shared recorder videoFileCompleted", () => {
 
     await createRecorderManager(appConfig);
 
-    // 创建 manager 时按配置注入一次
+    // 创建 manager 时按配置注入一次（档案 + 在线补全开关 + 持久化缓存）
     expect(setAnchorProfilesMock).toHaveBeenCalledWith(profiles);
+    expect(setAnchorLookupEnabledMock).toHaveBeenCalledWith(false);
+    expect(seedAnchorProfilesMock).toHaveBeenCalledWith(data.douyinAnchorLookup.cache);
 
     // 配置更新后重新注入（即使只改了档案，也要生效）
     const nextProfiles = [{ uid: "111", name: "新档案" }];
@@ -273,5 +286,6 @@ describe("shared recorder videoFileCompleted", () => {
     updateHandler(null, null, "douyinAnchorProfiles");
 
     expect(setAnchorProfilesMock).toHaveBeenLastCalledWith(nextProfiles);
+    expect(setAnchorLookupEnabledMock).toHaveBeenLastCalledWith(false);
   });
 });

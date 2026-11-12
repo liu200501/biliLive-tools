@@ -104,3 +104,77 @@ describe("PkMessageHandler", () => {
     expect(handler.handle("LinkMicArmiesMethod", payload)).toBeNull();
   });
 });
+
+// ---- 手搓 protobuf ----
+function varint(value: bigint): number[] {
+  const bytes: number[] = [];
+  let rest = value;
+  while (rest >= 0x80n) {
+    bytes.push(Number(rest & 0x7fn) | 0x80);
+    rest >>= 7n;
+  }
+  bytes.push(Number(rest));
+  return bytes;
+}
+
+function tag(field: number, wire: number): number[] {
+  return varint(BigInt((field << 3) | wire));
+}
+
+function bytesField(field: number, payload: number[]): number[] {
+  return [...tag(field, 2), ...varint(BigInt(payload.length)), ...payload];
+}
+
+function armyUser(uid: bigint, score: bigint, nickname: string): number[] {
+  const name = [...Buffer.from(nickname, "utf8")];
+  return [...tag(1, 0), ...varint(uid), ...tag(2, 0), ...varint(score), ...bytesField(3, name)];
+}
+
+function userArmies(users: number[][]): number[] {
+  return users.flatMap((user) => bytesField(1, user));
+}
+
+/** user_armies_map 的一条 entry：field1 = int64 key，field2 = UserArmies */
+function armyEntry(anchorId: bigint, users: number[][]): number[] {
+  return [...tag(1, 0), ...varint(anchorId), ...bytesField(2, userArmies(users))];
+}
+
+describe("armies 精度与去重", () => {
+  it("应精确还原超过 2^53 的主播 uid", () => {
+    // 真实值 7669311243275273253，Number 化后变成 7669311243275273000
+    const payload = Buffer.from(
+      bytesField(2, armyEntry(7669311243275273253n, [armyUser(2504027341605680n, 3n, "芙芙")])),
+    );
+
+    const event = decodePkMessage("WebcastLinkMicArmiesMethod", payload);
+    expect(event!.anchors![0].anchor_id).toBe("7669311243275273253");
+    expect(event!.anchors![0].users).toEqual([
+      { rank: 1, uid: "2504027341605680", nickname: "芙芙", score: "3" },
+    ]);
+  });
+
+  it("user_armies_list 里已归属的用户不应重复进散票", () => {
+    const mine = armyUser(1n, 10n, "甲");
+    const payload = Buffer.from([
+      ...bytesField(2, armyEntry(7669311243275273253n, [mine])),
+      // 汇总列表重复了同一个人，外加一个真正没归属的
+      ...bytesField(3, userArmies([mine, armyUser(2n, 5n, "乙")])),
+    ]);
+
+    const event = decodePkMessage("WebcastLinkMicArmiesMethod", payload);
+    expect(event!.unassigned_armies).toEqual([
+      // rank 沿用源列表顺序
+      [{ rank: 2, uid: "2", nickname: "乙", score: "5" }],
+    ]);
+  });
+
+  it("全部用户都已归属时不产生散票", () => {
+    const mine = armyUser(1n, 10n, "甲");
+    const payload = Buffer.from([
+      ...bytesField(2, armyEntry(123n, [mine])),
+      ...bytesField(3, userArmies([mine])),
+    ]);
+
+    expect(decodePkMessage("WebcastLinkMicArmiesMethod", payload)!.unassigned_armies).toEqual([]);
+  });
+});
